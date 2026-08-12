@@ -1,234 +1,119 @@
-(function (exports, common, metro, components, plugin, patcher, assets, utils) {
+(function (U, n, l, v, e, y, B, k) {
   "use strict";
+  const { FormSection: N, FormInput: f, FormRow: A } = v.Forms,
+    F = l.findByProps("getCurrentUser", "getUser"),
+    O = l.findByProps("getChannel", "getChannelId"),
+    $ = l.findByProps("getChannelId", "getLastSelectedChannelId"),
+    _ = l.findByProps("openLazy", "hideActionSheet"),
+    w = l.findByProps("ActionSheetRow")?.ActionSheetRow ?? v.Forms.FormRow,
+    G = l.findByStoreName("MessageStore"),
+    j = l.findByStoreName("UserStore"),
+    R = l.findByProps("sendMessage", "startEditMessage", "editMessage"),
+    W = l.findByProps("showToast"),
+    NV = l.findByProps("useNavigation"),
+    Q = l.findByStoreName("GuildStore"),
+    I = new Map();
+  let S = !1;
 
-  const DEBUG = true;
-  function log(...args) {
-    if (DEBUG) console.log("[Spoofer]", ...args);
+  function x(r) {
+    return ((new Date(r).getTime() - 14200704e5) * 4194304).toString();
   }
-  function warn(...args) {
-    if (DEBUG) console.warn("[Spoofer]", ...args);
+  let _lastSnow = 0;
+  function genId(r) {
+    let b = (new Date(r).getTime() - 14200704e5) * 4194304;
+    if (!(b > _lastSnow)) b = _lastSnow + 8192;
+    _lastSnow = b;
+    return b.toString();
   }
-
-  // ─── Module References (null-safe: must never throw at load) ─────────────────
-
-  const _loadErrors = [];
-
-  const Forms = (components && components.Forms) || {};
-
-  // Newer Discord builds removed components.Forms - try to recover the pieces
-  let _FormSection = Forms.FormSection;
-  let _FormInput = Forms.FormInput;
-  let _FormRow = Forms.FormRow;
-  let _FormSwitch = Forms.FormSwitch;
-  let _FormDivider = Forms.FormDivider;
-
-  if (!_FormRow) {
-    try {
-      const alt = metro.findByProps("FormRow", "FormSection")
-        || metro.findByProps("FormRow")
-        || null;
-      if (alt) {
-        _FormSection = _FormSection || alt.FormSection;
-        _FormInput = _FormInput || alt.FormInput;
-        _FormRow = _FormRow || alt.FormRow;
-        _FormSwitch = _FormSwitch || alt.FormSwitch;
-        _FormDivider = _FormDivider || alt.FormDivider;
-      }
-    } catch {}
-  }
-  // if FormSwitch is missing, try dedicated module
-  if (!_FormSwitch) {
-    try { _FormSwitch = metro.findByProps("FormSwitch")?.FormSwitch; } catch {}
-  }
-
-  const FormSection = _FormSection;
-  const FormInput = _FormInput;
-  const FormRow = _FormRow;
-  const FormSwitch = _FormSwitch;
-  const FormContainer = Forms.Form || common?.React?.Fragment;
-  if (!_FormRow) _loadErrors.push("Forms.FormRow");
-
-  const UserStore = metro.findByProps("getCurrentUser", "getUser");
-  const ChannelModule = metro.findByProps("getChannel", "getChannelId");
-  const ChannelSelection = metro.findByProps("getChannelId", "getLastSelectedChannelId");
-  const ActionSheetModule = metro.findByProps("openLazy", "hideActionSheet");
-  const ActionSheetRow = metro.findByProps("ActionSheetRow")?.ActionSheetRow ?? Forms.FormRow;
-  const MessageStore = metro.findByStoreName("MessageStore");
-  const UserStoreByName = metro.findByStoreName("UserStore");
-  const MessageActions = metro.findByProps("sendMessage", "startEditMessage", "editMessage");
-  const ToastModule = metro.findByProps("showToast");
-  const NavigationModule = metro.findByProps("useNavigation");
-  const GuildStore = metro.findByStoreName("GuildStore");
-
-  // resilient FluxDispatcher - some builds don't expose it on common
-  const FluxDispatcher = (common && common.FluxDispatcher)
-    || metro.findByProps("dispatch", "subscribe", "_actionHandlers")
-    || metro.findByProps("dispatch", "register")
-    || null;
-
-  function dispatchFlux(payload) {
-    if (!FluxDispatcher || typeof FluxDispatcher.dispatch !== "function") {
-      showToast("[Spoofer] FluxDispatcher not found on this build");
-      return false;
-    }
-    try {
-      FluxDispatcher.dispatch(payload);
-      return true;
-    } catch (err) {
-      warn("dispatch failed", err);
-      showToast("[Spoofer] dispatch error: " + (err.message || "unknown"));
-      return false;
-    }
-  }
-
-  // ─── State ───────────────────────────────────────────────────────────────────
-
-  const originalMessages = new Map();
-  const resolving = new Set();
-  const avatarSourceCache = new Map();
-  const EMPTY = {};
-
-  let isLocalEditing = false;
-  let selfActive = false;
-  let selfId = null;
-  let selfAt = 0;
-  let cachedCurrentUser = null;
-  let cachedCurrentUserId = null;
-  let cachedCurrentUserProxy = null;
-  let lastSnowflake = 0;
-  let fetchProfileModule;
-
-  let contextMenuPatch = null;
-  let channelSelectSub = null;
-  let patches = [];
-  let dispatchGuard = null;
-  let cleanupCallbacks = [];
-  let patchInfo = "(not loaded)";
-
-  // ─── Utilities ───────────────────────────────────────────────────────────────
-
-  function genId(timestamp) {
-    let snowflake = (new Date(timestamp).getTime() - 1420070400000) * 4194304;
-    if (snowflake <= lastSnowflake) snowflake = lastSnowflake + 8192;
-    lastSnowflake = snowflake;
-    return snowflake.toString();
-  }
-
   function lastSundayDate(year, month1) {
     const last = new Date(Date.UTC(year, month1, 0));
     return last.getUTCDate() - last.getUTCDay();
   }
-
-  function ukIsBST(date) {
-    const y = date.getUTCFullYear();
+  function ukIsBSTInstant(t) {
+    const y = t.getUTCFullYear();
     const start = Date.UTC(y, 2, lastSundayDate(y, 3), 1, 0, 0);
     const end = Date.UTC(y, 9, lastSundayDate(y, 10), 1, 0, 0);
-    const ms = date.getTime();
+    const ms = t.getTime();
     return ms >= start && ms < end;
   }
-
   function ukNowDate() {
     const now = new Date();
-    const offsetMinutes = ukIsBST(now) ? 60 : 0;
-    const shifted = new Date(now.getTime() + offsetMinutes * 60000);
+    const off = ukIsBSTInstant(now) ? 60 : 0;
+    const s = new Date(now.getTime() + off * 60000);
     return new Date(
-      shifted.getUTCFullYear(),
-      shifted.getUTCMonth(),
-      shifted.getUTCDate(),
-      shifted.getUTCHours(),
-      shifted.getUTCMinutes(),
-      shifted.getUTCSeconds(),
-      shifted.getUTCMilliseconds(),
+      s.getUTCFullYear(),
+      s.getUTCMonth(),
+      s.getUTCDate(),
+      s.getUTCHours(),
+      s.getUTCMinutes(),
+      s.getUTCSeconds(),
+      s.getUTCMilliseconds(),
     );
   }
-
-  function isUkTimeEnabled() {
+  function ukOn() {
     try {
-      return plugin.storage.ukTime !== false;
+      return e.storage.ukTime !== !1;
     } catch {
-      return true;
+      return !0;
     }
   }
-
   function nowDate() {
-    return isUkTimeEnabled() ? ukNowDate() : new Date();
+    return ukOn() ? ukNowDate() : new Date();
   }
-
   function nowISO() {
     return nowDate().toISOString();
   }
-
-  function extractId(input) {
+  const resolving = new Set();
+  function extractId(x) {
     try {
-      if (!input) return null;
-      if (typeof input === "string") return /^\d+$/.test(input) ? input : null;
-      if (input.id) return input.id;
-      if (input.userId) return input.userId;
-      if (input.user && input.user.id) return input.user.id;
-    } catch (err) {
-      warn("extractId failed", err);
-    }
+      if (!x) return null;
+      if (typeof x === "string") return /^\d+$/.test(x) ? x : null;
+      if (x.id) return x.id;
+      if (x.userId) return x.userId;
+      if (x.user && x.user.id) return x.user.id;
+    } catch {}
     return null;
   }
-
-  function forceSet(obj, key, value) {
-    if (!obj) return;
+  function forceSet(o, k, v) {
+    if (!o) return;
     try {
-      obj[key] = value;
+      o[k] = v;
     } catch {}
     try {
-      if (obj[key] !== value)
-        Object.defineProperty(obj, key, {
-          value,
-          writable: true,
-          configurable: true,
-          enumerable: true,
+      if (o[k] !== v)
+        Object.defineProperty(o, k, {
+          value: v,
+          writable: !0,
+          configurable: !0,
+          enumerable: !0,
         });
     } catch {}
   }
-
-  function forceNull(obj, key) {
+  function forceNull(o, k) {
     try {
-      if (!(key in obj)) return;
+      if (!(k in o)) return;
     } catch {
       return;
     }
-    forceSet(obj, key, null);
+    forceSet(o, k, null);
   }
-
-  function showToast(message) {
-    try {
-      ToastModule?.showToast?.(message);
-    } catch (err) {
-      warn("showToast failed", err);
+  const EMPTY = {};
+  function anyProf() {
+    const p = e.storage.profiles;
+    if (!p) return !1;
+    for (const k in p) return !0;
+    return !1;
+  }
+  function firstProfiledId(args) {
+    if (!args) return null;
+    if (!anyProf()) return null;
+    const profs = e.storage.profiles || EMPTY;
+    for (let i5 = 0; i5 < args.length; i5++) {
+      const id = extractId(args[i5]);
+      if (id && profs[id]) return id;
     }
-  }
-
-  function getCurrentChannelId() {
-    // try every known way to get the current channel
-    try {
-      const a = ChannelSelection?.getChannelId?.();
-      if (a) return a;
-    } catch {}
-    try {
-      const b = ChannelModule?.getChannelId?.();
-      if (b) return b;
-    } catch {}
-    try {
-      const sel = metro.findByProps("getLastSelectedChannelId");
-      const c = sel?.getChannelId?.() || sel?.getLastSelectedChannelId?.();
-      if (c) return c;
-    } catch {}
-    try {
-      const sel2 = metro.findByProps("getCurrentlySelectedChannelId");
-      const d = sel2?.getCurrentlySelectedChannelId?.();
-      if (d) return d;
-    } catch {}
     return null;
   }
-
-  // ─── Date Parsing ───────────────────────────────────────────────────────────
-
   function createdAtFromId(id) {
     try {
       const ms = Math.floor(Number(id) / 4194304) + 1420070400000;
@@ -236,37 +121,40 @@
     } catch {}
     return null;
   }
-
   function parseUserDate(str) {
     str = ("" + str).trim();
     if (!str) return null;
-
     let m = str.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
     if (m) {
-      const yr = +m[1], mo = +m[2], dy = +m[3];
+      const yr = +m[1],
+        mo = +m[2],
+        dy = +m[3];
       const d = new Date(yr, mo - 1, dy);
       if (!isNaN(d.getTime()) && d.getMonth() === mo - 1 && d.getDate() === dy)
         return d;
       return null;
     }
-
     m = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
     if (m) {
-      let a = +m[1], b = +m[2], y = +m[3];
+      let a = +m[1],
+        b = +m[2],
+        y = +m[3];
       if (y < 100) y += 2000;
-      let dy = a, mo = b;
-      if (mo > 12 && dy <= 12) { dy = b; mo = a; }
+      let dy = a,
+        mo = b;
+      if (mo > 12 && dy <= 12) {
+        dy = b;
+        mo = a;
+      }
       const d = new Date(y, mo - 1, dy);
       if (!isNaN(d.getTime()) && d.getMonth() === mo - 1 && d.getDate() === dy)
         return d;
       return null;
     }
-
-    const fallback = new Date(str);
-    if (!isNaN(fallback.getTime())) return fallback;
+    const d2 = new Date(str);
+    if (!isNaN(d2.getTime())) return d2;
     return null;
   }
-
   function fmtSimple(iso) {
     try {
       const d = new Date(iso);
@@ -276,65 +164,8 @@
       return "";
     }
   }
-
-  function mkISO(year, month, day, hour, minute, useUTC) {
-    const dt = useUTC
-      ? new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0))
-      : new Date(year, month - 1, day, hour, minute, 0, 0);
-    return isNaN(dt.getTime()) ? null : dt.toISOString();
-  }
-
-  function parseTime(str, base, useUTC) {
-    const s = (str || "").trim();
-    if (!s) return null;
-    let m;
-
-    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T]+(\d{1,2}):(\d{2})$/)))
-      return mkISO(+m[1], +m[2], +m[3], +m[4], +m[5], useUTC);
-
-    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)))
-      return mkISO(+m[1], +m[2], +m[3], 0, 0, useUTC);
-
-    if ((m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*([ap]m)$/i))) {
-      let h = +m[1];
-      const mi = m[2] ? +m[2] : 0;
-      const ap = m[3].toLowerCase();
-      if (ap === "pm" && h !== 12) h += 12;
-      if (ap === "am" && h === 12) h = 0;
-      return mkISO(base.y, base.mo, base.d, h, mi, useUTC);
-    }
-
-    if ((m = s.match(/^(\d{1,2}):(\d{2})$/)))
-      return mkISO(base.y, base.mo, base.d, +m[1], +m[2], useUTC);
-
-    return null;
-  }
-
-  // ─── Profile Resolution ─────────────────────────────────────────────────────
-
-  function hasAnyProfile() {
-    const profiles = plugin.storage.profiles;
-    if (!profiles) return false;
-    for (const k in profiles) return true;
-    return false;
-  }
-
-  function firstProfiledId(args) {
-    if (!args || !hasAnyProfile()) return null;
-    const profiles = plugin.storage.profiles || EMPTY;
-    for (let i = 0; i < args.length; i++) {
-      const id = extractId(args[i]);
-      if (id && profiles[id]) return id;
-    }
-    return null;
-  }
-
-  function getProfile(uid) {
-    return (plugin.storage.profiles || EMPTY)[uid] || null;
-  }
-
   function resolveJoined(uid) {
-    const prof = getProfile(uid);
+    const prof = (e.storage.profiles || EMPTY)[uid];
     if (!prof) return null;
     if (prof.joinedAt) return prof.joinedAt;
     if (prof.sourceId) {
@@ -343,9 +174,8 @@
     }
     return null;
   }
-
   function resolveCreated(uid) {
-    const prof = getProfile(uid);
+    const prof = (e.storage.profiles || EMPTY)[uid];
     if (!prof) return null;
     if (prof.accountDate) {
       const d = new Date(prof.accountDate);
@@ -354,223 +184,264 @@
     if (prof.sourceId) return createdAtFromId(prof.sourceId);
     return null;
   }
-
   function resolveName(uid) {
-    const prof = getProfile(uid);
+    const prof = (e.storage.profiles || EMPTY)[uid];
     if (!prof) return null;
     if (prof.name) return prof.name;
     if (prof.sourceId && !resolving.has(uid)) {
       resolving.add(uid);
       try {
-        const src = UserStoreByName.getUser(prof.sourceId);
-        if (src) return src.globalName || src.global_name || src.username || null;
-      } catch (err) {
-        warn("resolveName lookup failed", err);
+        const src = j.getUser(prof.sourceId);
+        if (src)
+          return src.globalName || src.global_name || src.username || null;
+      } catch {
       } finally {
         resolving.delete(uid);
       }
     }
     return null;
   }
-
   function resolveUsername(uid) {
-    const prof = getProfile(uid);
+    const prof = (e.storage.profiles || EMPTY)[uid];
     if (!prof) return null;
     if (prof.sourceId && !resolving.has(uid)) {
       resolving.add(uid);
       try {
-        const src = UserStoreByName.getUser(prof.sourceId);
+        const src = j.getUser(prof.sourceId);
         if (src) return src.username || null;
-      } catch (err) {
-        warn("resolveUsername lookup failed", err);
+      } catch {
       } finally {
         resolving.delete(uid);
       }
     }
     return prof.name || null;
   }
-
   function resolveAvatar(uid) {
-    const prof = getProfile(uid);
+    const prof = (e.storage.profiles || EMPTY)[uid];
     if (!prof) return null;
     if (prof.sourceId && !resolving.has(uid)) {
       resolving.add(uid);
       try {
-        const src = UserStoreByName.getUser(prof.sourceId);
+        const src = j.getUser(prof.sourceId);
         if (src && typeof src.getAvatarURL === "function") {
-          const url = src.getAvatarURL();
-          if (url) return url;
+          const u = src.getAvatarURL();
+          if (u) return u;
         }
-      } catch (err) {
-        warn("resolveAvatar lookup failed", err);
+      } catch {
       } finally {
         resolving.delete(uid);
       }
     }
     return prof.avatar || null;
   }
-
+  const _avSrc = new Map();
   function mirrorSource(id, ret) {
     const uri = resolveAvatar(id);
     if (!uri) return ret;
-    const prev = avatarSourceCache.get(id);
+    const prev = _avSrc.get(id);
     if (prev && prev.uri === uri) return prev.obj;
-    const obj = (ret && typeof ret === "object")
-      ? Object.assign({}, ret, { uri })
-      : { uri };
-    avatarSourceCache.set(id, { uri, obj });
+    const obj =
+      ret && typeof ret === "object"
+        ? Object.assign({}, ret, { uri: uri })
+        : { uri: uri };
+    _avSrc.set(id, { uri: uri, obj: obj });
     return obj;
   }
-
   function resolveBanner(uid) {
-    const prof = getProfile(uid);
+    const prof = (e.storage.profiles || EMPTY)[uid];
     if (!prof || !prof.sourceId) return null;
-    const key = "b" + uid;
-    if (resolving.has(key)) return null;
-    resolving.add(key);
+    if (resolving.has("b" + uid)) return null;
+    resolving.add("b" + uid);
     try {
-      const src = UserStoreByName.getUser(prof.sourceId);
+      const src = j.getUser(prof.sourceId);
       if (src && typeof src.getBannerURL === "function") {
-        let url;
-        try { url = src.getBannerURL({ size: 2048 }); } catch {}
-        if (!url) try { url = src.getBannerURL(); } catch {}
-        if (url) return url;
-      }
-      let bannerHash = src && src.banner;
-      if (!bannerHash) {
+        let u;
         try {
-          const UPS = metro.findByStoreName("UserProfileStore");
-          const sp = UPS && UPS.getUserProfile(prof.sourceId);
-          if (sp && sp.banner) bannerHash = sp.banner;
+          u = src.getBannerURL({ size: 2048 });
         } catch {}
+        if (!u)
+          try {
+            u = src.getBannerURL();
+          } catch {}
+        if (u) return u;
       }
-      if (bannerHash) {
-        const ext = ("" + bannerHash).indexOf("a_") === 0 ? "gif" : "png";
-        return `https://cdn.discordapp.com/banners/${prof.sourceId}/${bannerHash}.${ext}?size=2048`;
+      let bh = src && src.banner;
+      if (!bh)
+        try {
+          const UPS = l.findByStoreName("UserProfileStore");
+          const sp = UPS && UPS.getUserProfile(prof.sourceId);
+          if (sp && sp.banner) bh = sp.banner;
+        } catch {}
+      if (bh) {
+        const ext = ("" + bh).indexOf("a_") === 0 ? "gif" : "png";
+        return (
+          "https://cdn.discordapp.com/banners/" +
+          prof.sourceId +
+          "/" +
+          bh +
+          "." +
+          ext +
+          "?size=2048"
+        );
       }
-    } catch (err) {
-      warn("resolveBanner failed", err);
+    } catch {
     } finally {
-      resolving.delete(key);
+      resolving.delete("b" + uid);
     }
     return null;
   }
-
   function resolveAccent(uid) {
-    const prof = getProfile(uid);
+    const prof = (e.storage.profiles || EMPTY)[uid];
     if (!prof || !prof.sourceId) return null;
-    const key = "a" + uid;
-    if (resolving.has(key)) return null;
-    resolving.add(key);
+    if (resolving.has("a" + uid)) return null;
+    resolving.add("a" + uid);
     try {
-      const src = UserStoreByName.getUser(prof.sourceId);
+      const src = j.getUser(prof.sourceId);
       if (src && src.accentColor != null) return src.accentColor;
-    } catch (err) {
-      warn("resolveAccent failed", err);
+    } catch {
     } finally {
-      resolving.delete(key);
+      resolving.delete("a" + uid);
     }
     return null;
   }
-
   function mkAuthor(uid) {
-    let user = null;
-    try { user = UserStoreByName.getUser(uid); } catch {}
-    const displayName = resolveName(uid);
-    const username = resolveUsername(uid);
-    const avatar = resolveAvatar(uid);
+    let u = null;
+    try {
+      u = j.getUser(uid);
+    } catch {}
+    const dn = resolveName(uid);
+    const un = resolveUsername(uid);
+    const av = resolveAvatar(uid);
     return {
       id: uid,
-      username: username || (user ? user.username : "FakeUser"),
-      global_name: displayName || (user ? user.globalName || user.global_name || null : null),
-      discriminator: user ? user.discriminator : "0001",
-      avatar: avatar || (user ? user.avatar : null),
-      bot: user ? user.bot : false,
+      username: un || (u ? u.username : "FakeUser"),
+      global_name: dn || (u ? u.globalName || u.global_name || null : null),
+      discriminator: u ? u.discriminator : "0001",
+      avatar: av || (u ? u.avatar : null),
+      bot: u ? u.bot : !1,
     };
   }
-
-  // ─── Self-Profile Spoofing ──────────────────────────────────────────────────
-
-  function spoofCurrentUser(real, id) {
+  let selfActive = !1,
+    selfId = null,
+    selfAt = 0,
+    _cuReal = null,
+    _cuId = null,
+    _cuProxy = null;
+  function spoofCU(real, id) {
     try {
-      if (cachedCurrentUserProxy && cachedCurrentUser === real && cachedCurrentUserId === id)
-        return cachedCurrentUserProxy;
-
+      if (_cuProxy && _cuReal === real && _cuId === id) return _cuProxy;
       const desc = Object.getOwnPropertyDescriptors(real);
       delete desc.id;
       const clone = Object.create(Object.getPrototypeOf(real), desc);
       Object.defineProperty(clone, "id", {
         value: id,
-        writable: true,
-        enumerable: true,
-        configurable: true,
+        writable: !0,
+        enumerable: !0,
+        configurable: !0,
       });
       try {
-        const created = resolveCreated(id);
-        if (created) forceSet(clone, "createdAt", created);
+        const ca = resolveCreated(id);
+        if (ca) forceSet(clone, "createdAt", ca);
       } catch {}
-
-      cachedCurrentUser = real;
-      cachedCurrentUserId = id;
-      cachedCurrentUserProxy = clone;
+      ((_cuReal = real), (_cuId = id), (_cuProxy = clone));
       return clone;
     } catch {
       return real;
     }
   }
-
-  // ─── Server Tag Resolution ──────────────────────────────────────────────────
-
   function resolveServerName(inlineId, channelId) {
     try {
       let id = inlineId;
-      if (!id) id = ("" + (plugin.storage.serverTagId || "")).trim();
+      if (!id) id = ("" + (e.storage.serverTagId || "")).trim();
       if (!id) {
-        const ch = ChannelModule?.getChannel?.(channelId);
+        const ch = O && O.getChannel && O.getChannel(channelId);
         id = ch && ch.guild_id;
       }
-      if (id && GuildStore?.getGuild) {
-        const guild = GuildStore.getGuild(id);
-        if (guild && guild.name) return guild.name;
+      if (id && Q && Q.getGuild) {
+        const g = Q.getGuild(id);
+        if (g && g.name) return g.name;
       }
     } catch {}
     return null;
   }
-
-  function applyServerTags(content, channelId) {
+  function applyTags(content, channelId) {
     if (!content || content.indexOf("[server") === -1) return content;
-    let out = content.replace(/\[server:(\d{5,25})\]/gi, (match, id) => {
-      return resolveServerName(id, channelId) || match;
+    let out = content.replace(/\[server:(\d{5,25})\]/gi, function (m, id) {
+      return resolveServerName(id, channelId) || m;
     });
-    out = out.replace(/\[server\]/gi, (match) => {
-      return resolveServerName(null, channelId) || match;
+    out = out.replace(/\[server\]/gi, function (m) {
+      return resolveServerName(null, channelId) || m;
     });
     return out;
   }
-
-  // ─── Network Helpers ────────────────────────────────────────────────────────
-
-  async function fetchWithTimeout(url, ms, opts) {
-    const timeout = ms || 8000;
-    const controller = typeof AbortController === "function" ? new AbortController() : null;
-    const timer = setTimeout(() => {
-      try { controller?.abort(); } catch {}
-    }, timeout);
-
+  
+  async function P(r, s, c, u, t, ref) {
+    c = applyTags(c, r);
+    const d = t || genId(u || nowISO());
     try {
-      const fetchOpts = Object.assign({}, opts, controller ? { signal: controller.signal } : {});
-      const racePromises = [fetch(url, fetchOpts)];
-
-      if (!controller) {
-        racePromises.push(
-          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), timeout))
-        );
+      const g = u || nowISO(),
+        h = {
+          id: d,
+          type: 0,
+          channel_id: r,
+          author: mkAuthor(s),
+          content: c,
+          nonce: d,
+          mentions: [],
+          mention_roles: [],
+          pinned: !1,
+          tts: !1,
+          attachments: [],
+          embeds: [],
+          timestamp: g,
+          edited_timestamp: null,
+          state: "SENT",
+          fake: !0,
+        };
+      if (ref && ref.id) {
+        h.type = 19;
+        h.message_reference = { message_id: ref.id, channel_id: r };
+        try {
+          const gid = O?.getChannel?.(r)?.guild_id;
+          if (gid) h.message_reference.guild_id = gid;
+        } catch {}
+        h.referenced_message = {
+          id: ref.id,
+          type: 0,
+          channel_id: r,
+          author: mkAuthor(ref.userId),
+          content: ref.content,
+          mentions: [],
+          mention_roles: [],
+          pinned: !1,
+          tts: !1,
+          attachments: [],
+          embeds: [],
+          timestamp: ref.timestamp || g,
+          edited_timestamp: null,
+          state: "SENT",
+          fake: !0,
+        };
       }
-
-      return await Promise.race(racePromises);
-    } finally {
-      clearTimeout(timer);
-    }
+      n.FluxDispatcher.dispatch({
+        type: "MESSAGE_CREATE",
+        channelId: r,
+        message: h,
+        otherPluginBypass: !0,
+      });
+      try {
+        n.FluxDispatcher.dispatch({
+          type: "MESSAGE_ACK",
+          channelId: r,
+          messageId: d,
+          manual: !0,
+          immediate: !0,
+        });
+      } catch {}
+      try {
+        addLinkEmbeds(r, h, c);
+      } catch {}
+    } catch {}
   }
 
   function decodeEntities(str) {
@@ -584,29 +455,49 @@
       .replace(/&#x2F;/gi, "/")
       .trim();
   }
-
+  async function fetchT(url, ms, opts) {
+    const ctl =
+      typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctl
+      ? setTimeout(function () {
+          try {
+            ctl.abort();
+          } catch {}
+        }, ms || 8000)
+      : null;
+    try {
+      return await fetch(
+        url,
+        Object.assign({}, opts, ctl ? { signal: ctl.signal } : {}),
+      );
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
   function metaTag(html, prop) {
     try {
-      const escapedProp = prop.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       let m = html.match(
         new RegExp(
-          '<meta[^>]+(?:property|name)=["\']' + escapedProp + '["\'][^>]*?content=["\']([^"\']*)["\']', "i"
+          '<meta[^>]+(?:property|name)=["\\\']' +
+            prop +
+            '["\\\'][^>]*?content=["\\\']([^"\\\']*)["\\\']',
+          "i",
         ),
       );
       if (m && m[1]) return decodeEntities(m[1]);
       m = html.match(
         new RegExp(
-          '<meta[^>]+content=["\']([^"\']*)["\'][^>]*?(?:property|name)=["\']' + escapedProp + '["\']', "i"
+          '<meta[^>]+content=["\\\']([^"\\\']*)["\\\'][^>]*?(?:property|name)=["\\\']' +
+            prop +
+            '["\\\']',
+          "i",
         ),
       );
       if (m && m[1]) return decodeEntities(m[1]);
     } catch {}
     return null;
   }
-
-  // ─── Embed Fetching ─────────────────────────────────────────────────────────
-
-  function extractYouTubeId(url) {
+  function ytId(url) {
     let m;
     if ((m = url.match(/[?&]v=([\w-]{11})/))) return m[1];
     if ((m = url.match(/youtu\.be\/([\w-]{11})/))) return m[1];
@@ -615,392 +506,305 @@
     if ((m = url.match(/youtube\.com\/live\/([\w-]{11})/))) return m[1];
     return null;
   }
-
-  async function fetchYouTubeEmbed(url) {
-    const vid = extractYouTubeId(url);
+  async function fetchYouTube(url) {
+    const vid = ytId(url);
     let data = {};
     try {
-      const res = await fetchWithTimeout(
-        "https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent(url),
+      const res = await fetchT(
+        "https://www.youtube.com/oembed?format=json&url=" +
+          encodeURIComponent(url),
         8000,
       );
       if (res && res.ok) data = await res.json();
     } catch {}
-
     if (!vid && !data.title) return null;
-
-    const w = data.thumbnail_width || 1280;
-    const h = data.thumbnail_height || 720;
-    const embed = {
-      type: vid ? "video" : "rich",
-      url,
-      color: 0xff0000,
-      provider: { name: "YouTube", url: "https://www.youtube.com" },
-    };
-
+    const w = data.thumbnail_width || 1280,
+      h = data.thumbnail_height || 720,
+      embed = {
+        type: vid ? "video" : "rich",
+        url: url,
+        color: 0xff0000,
+        provider: { name: "YouTube", url: "https://www.youtube.com" },
+      };
     if (data.title) embed.title = ("" + data.title).slice(0, 256);
-    if (data.author_name) embed.author = { name: data.author_name, url: data.author_url };
-
-    const thumb = data.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : null);
-    if (thumb) embed.thumbnail = { url: thumb, proxy_url: thumb, width: w, height: h };
-    if (vid) embed.video = { url: `https://www.youtube.com/embed/${vid}`, width: 1280, height: 720 };
-
+    if (data.author_name)
+      embed.author = { name: data.author_name, url: data.author_url };
+    const thumb =
+      data.thumbnail_url ||
+      (vid ? "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg" : null);
+    if (thumb)
+      embed.thumbnail = { url: thumb, proxy_url: thumb, width: w, height: h };
+    if (vid)
+      embed.video = {
+        url: "https://www.youtube.com/embed/" + vid,
+        width: 1280,
+        height: 720,
+      };
     return embed;
   }
-
-  async function fetchOpenGraphEmbed(url) {
+  async function fetchOpenGraph(url) {
     try {
-      const res = await fetchWithTimeout(url, 8000, {
+      const res = await fetchT(url, 8000, {
         headers: {
           Accept: "text/html,application/xhtml+xml",
-          "User-Agent": "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)",
+          "User-Agent":
+            "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)",
         },
       });
       if (!res || !res.ok) return null;
-
       let html = await res.text();
-      if (html && html.length > 600000) html = html.slice(0, 600000);
-
-      const title = metaTag(html, "og:title")
-        || metaTag(html, "twitter:title")
-        || (() => { const m = html.match(/<title[^>]*>([^<]*)<\/title>/i); return m ? decodeEntities(m[1]) : null; })();
-
-      const desc = metaTag(html, "og:description")
-        || metaTag(html, "twitter:description")
-        || metaTag(html, "description");
-
-      const image = metaTag(html, "og:image")
-        || metaTag(html, "og:image:url")
-        || metaTag(html, "twitter:image");
-
+      if (html && html.length > 6e5) html = html.slice(0, 6e5);
+      const title =
+        metaTag(html, "og:title") ||
+        metaTag(html, "twitter:title") ||
+        (function () {
+          const m = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+          return m ? decodeEntities(m[1]) : null;
+        })();
+      const desc =
+        metaTag(html, "og:description") ||
+        metaTag(html, "twitter:description") ||
+        metaTag(html, "description");
+      const image =
+        metaTag(html, "og:image") ||
+        metaTag(html, "og:image:url") ||
+        metaTag(html, "twitter:image");
       const site = metaTag(html, "og:site_name");
-
       if (!title && !desc && !image) return null;
-
-      const embed = { type: "rich", url, color: 0x4f545c };
+      const embed = { type: "rich", url: url, color: 0x4f545c };
       if (title) embed.title = title.slice(0, 256);
       if (desc) embed.description = desc.slice(0, 350);
       if (site) embed.footer = { text: site };
-      if (image) embed.image = { url: image, proxy_url: image };
-
+      if (image)
+        embed.image = {
+          url: image,
+          proxy_url: image,
+        };
       return embed;
     } catch {
       return null;
     }
   }
-
-  async function fetchSingleEmbed(url) {
+  async function fetchOneEmbed(url) {
     try {
-      if (/(?:youtube\.com\/watch\?|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)/i.test(url))
-        return await fetchYouTubeEmbed(url);
+      if (
+        /(?:youtube\.com\/watch\?|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)/i.test(
+          url,
+        )
+      )
+        return await fetchYouTube(url);
       if (/\.(png|jpe?g|gif|webp|bmp)(\?|#|$)/i.test(url))
-        return { type: "image", url, image: { url, proxy_url: url } };
-      return await fetchOpenGraphEmbed(url);
+        return {
+          type: "image",
+          url: url,
+          image: { url: url, proxy_url: url },
+        };
+      return await fetchOpenGraph(url);
     } catch {
       return null;
     }
   }
-
-  async function fetchAllEmbeds(content) {
-    const results = [];
+  async function fetchEmbeds(content) {
+    const out = [];
     try {
       const urls = ("" + (content || "")).match(/https?:\/\/[^\s<>]+/g) || [];
-      const seen = new Set();
-      for (let i = 0; i < urls.length && results.length < 4; i++) {
-        const url = urls[i].replace(/[)\]\.,!?'"]+$/, "");
-        if (seen.has(url)) continue;
-        seen.add(url);
-        const embed = await fetchSingleEmbed(url);
-        if (embed) results.push(embed);
+      const seen = {};
+      for (let i2 = 0; i2 < urls.length && out.length < 4; i2++) {
+        let url = urls[i2].replace(/[)\]\.,!?'"]+$/, "");
+        if (seen[url]) continue;
+        seen[url] = !0;
+        const em = await fetchOneEmbed(url);
+        if (em) out.push(em);
       }
     } catch {}
-    return results;
+    return out;
   }
-
-  function attachLinkEmbeds(channelId, message, content) {
+  function addLinkEmbeds(channelId, message, content) {
     try {
-      if (plugin.storage.embedsEnabled === false) return;
+      if (e.storage.embedsEnabled === !1) return;
       if (!/https?:\/\//i.test("" + (content || ""))) return;
-
-      fetchAllEmbeds(content)
-        .then((embeds) => {
+      fetchEmbeds(content)
+        .then(function (embeds) {
           if (!embeds || !embeds.length) return;
           try {
-            dispatchFlux({
+            n.FluxDispatcher.dispatch({
               type: "MESSAGE_UPDATE",
-              message: Object.assign({}, message, { embeds }),
-              otherPluginBypass: true,
+              message: Object.assign({}, message, { embeds: embeds }),
+              otherPluginBypass: !0,
             });
           } catch {}
         })
-        .catch(() => {});
+        .catch(function () {});
     } catch {}
   }
-
-  // ─── Message Creation & Storage ─────────────────────────────────────────────
-
-  async function createFakeMessage(channelId, userId, content, timestamp, messageId, replyRef) {
-    content = applyServerTags(content, channelId);
-    const id = messageId || genId(timestamp || nowISO());
-
-    try {
-      const ts = timestamp || nowISO();
-      const message = {
-        id,
-        type: 0,
-        channel_id: channelId,
-        author: mkAuthor(userId),
-        content,
-        nonce: id,
-        mentions: [],
-        mention_roles: [],
-        pinned: false,
-        tts: false,
-        attachments: [],
-        embeds: [],
-        timestamp: ts,
-        edited_timestamp: null,
-        state: "SENT",
-        fake: true,
-      };
-
-      if (replyRef && replyRef.id) {
-        message.type = 19;
-        message.message_reference = { message_id: replyRef.id, channel_id: channelId };
-        try {
-          const guildId = ChannelModule?.getChannel?.(channelId)?.guild_id;
-          if (guildId) message.message_reference.guild_id = guildId;
-        } catch {}
-        message.referenced_message = {
-          id: replyRef.id,
-          type: 0,
-          channel_id: channelId,
-          author: mkAuthor(replyRef.userId),
-          content: replyRef.content,
-          mentions: [],
-          mention_roles: [],
-          pinned: false,
-          tts: false,
-          attachments: [],
-          embeds: [],
-          timestamp: replyRef.timestamp || ts,
-          edited_timestamp: null,
-          state: "SENT",
-          fake: true,
-        };
-      }
-
-      const dispatched = dispatchFlux({
-        type: "MESSAGE_CREATE",
-        channelId,
-        message,
-        otherPluginBypass: true,
-      });
-      if (!dispatched) return;
-
-      try {
-        dispatchFlux({
-          type: "MESSAGE_ACK",
-          channelId,
-          messageId: id,
-          manual: true,
-          immediate: true,
-        });
-      } catch {}
-
-      try {
-        attachLinkEmbeds(channelId, message, content);
-      } catch {}
-    } catch (err) {
-      warn("createFakeMessage failed", err);
-      showToast("Message dispatch failed: " + (err.message || "unknown"));
-    }
+  function L(r) {
+    ((e.storage.savedMessages = r), (e.storage._lastUpdate = Date.now()));
   }
-
-  function saveMessage(channelId, userId, content, messageId, timestamp, replyRef) {
-    const messages = plugin.storage.savedMessages || [];
-    const record = {
-      id: messageId,
-      channelId,
-      userId,
-      content,
-      timestamp,
+  function z(r, s, c, u, t, ref) {
+    const d = e.storage.savedMessages || [];
+    const rec = {
+      id: u,
+      channelId: r,
+      userId: s,
+      content: c,
+      timestamp: t,
       createdAt: Date.now(),
     };
-    if (replyRef) record.replyTo = replyRef;
-    messages.push(record);
-    plugin.storage.savedMessages = messages;
-    plugin.storage._lastUpdate = Date.now();
+    if (ref) rec.replyTo = ref;
+    (d.push(rec), L(d));
   }
-
-  function replayChannel(channelId) {
-    (plugin.storage.savedMessages || [])
-      .filter((msg) => msg.channelId === channelId)
-      .forEach((msg) => {
-        createFakeMessage(msg.channelId, msg.userId, msg.content, msg.timestamp, msg.id, msg.replyTo);
+  function H(r) {
+    (e.storage.savedMessages || [])
+      .filter(function (s) {
+        return s.channelId === r;
+      })
+      .forEach(function (s) {
+        P(s.channelId, s.userId, s.content, s.timestamp, s.id, s.replyTo);
       });
   }
-
-  function clearSavedMessages() {
+  function Y() {
+    return $?.getChannelId() || O?.getChannelId?.() || null;
+  }
+  function tt(r) {
     try {
-      const count = (plugin.storage.savedMessages || []).length;
-      plugin.storage.savedMessages = [];
-      plugin.storage._lastUpdate = Date.now();
-      showToast(`Cleared ${count} saved message${count === 1 ? "" : "s"}.`);
-    } catch {
-      showToast("Couldn't clear saved messages.");
+      W?.showToast?.(r);
+    } catch {}
+  }
+  function mkISO(Y0, Mo, D0, H0, Mi, useUTC) {
+    const dt = useUTC
+      ? new Date(Date.UTC(Y0, Mo - 1, D0, H0, Mi, 0, 0))
+      : new Date(Y0, Mo - 1, D0, H0, Mi, 0, 0);
+    return isNaN(dt.getTime()) ? null : dt.toISOString();
+  }
+  function parseTime(str, base, useUTC) {
+    const s = (str || "").trim();
+    if (!s) return null;
+    let m;
+    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T]+(\d{1,2}):(\d{2})$/)))
+      return mkISO(+m[1], +m[2], +m[3], +m[4], +m[5], useUTC);
+    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)))
+      return mkISO(+m[1], +m[2], +m[3], 0, 0, useUTC);
+    if ((m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*([ap]m)$/i))) {
+      let H0 = +m[1];
+      const Mi = m[2] ? +m[2] : 0,
+        ap = m[3].toLowerCase();
+      (ap === "pm" && H0 !== 12 && (H0 += 12), ap === "am" && H0 === 12 && (H0 = 0));
+      return mkISO(base.y, base.mo, base.d, H0, Mi, useUTC);
     }
+    if ((m = s.match(/^(\d{1,2}):(\d{2})$/)))
+      return mkISO(base.y, base.mo, base.d, +m[1], +m[2], useUTC);
+    return null;
   }
-
-  function removeAllFakeMessages() {
-    try {
-      const list = (plugin.storage.savedMessages || []).slice();
-      let removed = 0;
-      for (const rec of list) {
-        if (rec && rec.id && rec.channelId) {
-          try {
-            dispatchFlux({
-              type: "MESSAGE_DELETE",
-              id: rec.id,
-              channelId: rec.channelId,
-              otherPluginBypass: true,
-            });
-            removed++;
-          } catch {}
-        }
-      }
-      plugin.storage.savedMessages = [];
-      plugin.storage._lastUpdate = Date.now();
-      showToast(`Removed ${removed} spoofed message${removed === 1 ? "" : "s"} and cleared saved.`);
-    } catch {
-      showToast("Couldn't remove spoofed messages.");
-    }
+  function pRef(tok) {
+    if (!tok) return null;
+    const nn = tok.slice(1);
+    return nn ? { line: parseInt(nn, 10) } : { prev: !0 };
   }
-
-  // ─── Conversation Builder ───────────────────────────────────────────────────
-
-  function parseReplyRef(token) {
-    if (!token) return null;
-    const num = token.slice(1);
-    return num ? { line: parseInt(num, 10) } : { prev: true };
-  }
-
-  function parseConversationLine(line) {
+  function parseLine(line) {
     const raw = (line || "").trim();
     if (!raw) return null;
     let m;
-
-    if ((m = raw.match(/^([^\s\[\^|:\-\u2013\u2014]+)\s*\[([^\]]+)\]\s*(\^\d*)?\s*[-\u2013\u2014|:]\s*([\s\S]*)$/)))
-      return { uid: m[1], time: m[2].trim(), reply: parseReplyRef(m[3]), content: m[4] };
-
-    if ((m = raw.match(/^([^\s\[\^|:\-\u2013\u2014]+)\s*(\^\d*)?\s*[-\u2013\u2014|:]\s*([\s\S]*)$/)))
-      return { uid: m[1], time: null, reply: parseReplyRef(m[2]), content: m[3] };
-
+    if (
+      (m = raw.match(
+        /^([^\s\[\^|:\-\u2013\u2014]+)\s*\[([^\]]+)\]\s*(\^\d*)?\s*[-\u2013\u2014|:]\s*([\s\S]*)$/,
+      ))
+    )
+      return { uid: m[1], time: m[2].trim(), reply: pRef(m[3]), content: m[4] };
+    if (
+      (m = raw.match(
+        /^([^\s\[\^|:\-\u2013\u2014]+)\s*(\^\d*)?\s*[-\u2013\u2014|:]\s*([\s\S]*)$/,
+      ))
+    )
+      return { uid: m[1], time: null, reply: pRef(m[2]), content: m[3] };
     return null;
   }
-
-  function randomGapMs() {
-    return Math.floor(60000 + Math.random() * 60000);
+  function _randGapMs() {
+    return Math.floor(6e4 + Math.random() * 6e4);
   }
-
-  async function runConversation() {
-    try {
-      const channelId = getCurrentChannelId();
-      if (!channelId) {
-        showToast("No channel selected.");
-        return;
-      }
-
-      const text = plugin.storage.conversationText || "";
-      if (!text.trim()) {
-        showToast("Conversation box is empty.");
-        return;
-      }
-
-      const lines = text.split(/\r?\n/);
-      const useUTC = isUkTimeEnabled() ? false : plugin.storage.useUTC || false;
-      const now = nowDate();
-      const base = {
-        y: plugin.storage.customYear || now.getFullYear(),
-        mo: plugin.storage.customMonth || now.getMonth() + 1,
-        d: plugin.storage.customDay || now.getDate(),
+  async function runConvo() {
+    const ch = Y();
+    if (!ch) {
+      tt("No channel selected.");
+      return;
+    }
+    const text = e.storage.conversationText || "",
+      lines = text.split(/\r?\n/),
+      useUTC = ukOn() ? !1 : e.storage.useUTC || !1,
+      now = nowDate(),
+      base = {
+        y: e.storage.customYear || now.getFullYear(),
+        mo: e.storage.customMonth || now.getMonth() + 1,
+        d: e.storage.customDay || now.getDate(),
       };
-
-      const items = [];
-      for (const line of lines) {
-        const parsed = parseConversationLine(line);
-        if (!parsed || !parsed.content.trim()) continue;
-
-        let uid = parsed.uid;
-        if (/^(me|self)$/i.test(uid)) uid = UserStore.getCurrentUser()?.id;
-        else if (/^(them|they|user)$/i.test(uid)) uid = (plugin.storage.userId || "").trim();
-        if (!uid) {
-          log("Skipped line - no UID resolved:", line);
-          continue;
-        }
-
-        const explicit = parsed.time ? parseTime(parsed.time, base, useUTC) : null;
-        items.push({ uid, content: parsed.content, reply: parsed.reply, explicit });
-      }
-
-      if (!items.length) {
-        showToast("No valid lines. Format: me - hello");
-        return;
-      }
-
-      let cursor = nowDate().getTime();
-      for (const item of items) {
-        if (item.explicit) {
-          const t = new Date(item.explicit).getTime();
-          if (!isNaN(t)) { cursor = t; break; }
+    const items = [];
+    for (const line of lines) {
+      const parsed = parseLine(line);
+      if (!parsed || !parsed.content.trim()) continue;
+      let uid = parsed.uid;
+      if (/^(me|self)$/i.test(uid)) uid = F.getCurrentUser()?.id;
+      else if (/^(them|they|user)$/i.test(uid)) uid = (e.storage.userId || "").trim();
+      if (!uid) continue;
+      const explicit = parsed.time ? parseTime(parsed.time, base, useUTC) : null;
+      items.push({
+        uid: uid,
+        content: parsed.content,
+        reply: parsed.reply,
+        explicit: explicit || null,
+      });
+    }
+    let cursor = nowDate().getTime();
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].explicit) {
+        const t0 = new Date(items[i].explicit).getTime();
+        if (!isNaN(t0)) {
+          cursor = t0;
+          break;
         }
       }
-
-      let count = 0;
-      const built = [];
-
-      for (const item of items) {
-        let iso;
-        if (item.explicit) {
-          const t = new Date(item.explicit).getTime();
-          if (!isNaN(t)) {
-            cursor = t;
-            iso = new Date(t).toISOString();
-          } else {
-            iso = new Date(cursor).toISOString();
-          }
+    }
+    let count = 0;
+    const built = [];
+    for (const it of items) {
+      let iso;
+      if (it.explicit) {
+        const t = new Date(it.explicit).getTime();
+        if (!isNaN(t)) {
+          cursor = t;
+          iso = new Date(t).toISOString();
         } else {
           iso = new Date(cursor).toISOString();
         }
-        cursor += randomGapMs();
-
-        const id = genId(iso);
-        let ref = null;
-        if (item.reply) {
-          const target = item.reply.prev
-            ? built[built.length - 1]
-            : built[item.reply.line - 1];
-          if (target) {
-            ref = { id: target.id, userId: target.userId, content: target.content, timestamp: target.timestamp };
-          }
-        }
-
-        await createFakeMessage(channelId, item.uid, item.content, iso, id, ref);
-        saveMessage(channelId, item.uid, item.content, id, iso, ref);
-        built.push({ id, userId: item.uid, content: item.content, timestamp: iso });
-        count++;
+      } else {
+        iso = new Date(cursor).toISOString();
       }
-
-      showToast(count ? `Sent ${count} message${count === 1 ? "" : "s"}.` : "No valid lines found.");
-    } catch (err) {
-      showToast("Conversation error: " + (err.message || "unknown"));
-      warn("runConversation failed", err);
+      cursor += _randGapMs();
+      const id = genId(iso);
+      let ref = null;
+      if (it.reply) {
+        const target = it.reply.prev
+          ? built[built.length - 1]
+          : built[it.reply.line - 1];
+        if (target)
+          ref = {
+            id: target.id,
+            userId: target.userId,
+            content: target.content,
+            timestamp: target.timestamp,
+          };
+      }
+      (await P(ch, it.uid, it.content, iso, id, ref),
+        z(ch, it.uid, it.content, id, iso, ref),
+        built.push({
+          id: id,
+          userId: it.uid,
+          content: it.content,
+          timestamp: iso,
+        }),
+        count++);
     }
+    tt(count ? `Sent ${count} message${count === 1 ? "" : "s"}.` : "No valid lines found.");
   }
-
-  // ─── DM Navigation ─────────────────────────────────────────────────────────
-
-  function extractUserId(input) {
+  function _extractUserId(input) {
     const s = ("" + (input || "")).trim();
     if (!s) return null;
     let m = s.match(/^<@!?(\d{17,20})>$/);
@@ -1010,377 +814,218 @@
     if (/^\d{17,20}$/.test(s)) return s;
     return null;
   }
-
-  function dmNameFor(id) {
+  function _dmNameFor(id) {
     try {
-      const user = UserStoreByName.getUser(id);
-      if (user) return user.globalName || user.global_name || user.username || id;
+      const u = j.getUser(id);
+      if (u) return u.globalName || u.global_name || u.username || id;
     } catch {}
     return id;
   }
-
-  function pushMessagesScreen(channelId) {
+  function _tryOpenPrivate(acts, id) {
+    if (!acts || typeof acts.openPrivateChannel !== "function") return !1;
+    const shapes = [id, { recipientId: id }, { userId: id }];
+    for (let i = 0; i < shapes.length; i++) {
+      try {
+        acts.openPrivateChannel(shapes[i]);
+        return !0;
+      } catch {}
+    }
+    return !1;
+  }
+  function _pushMessagesScreen(channelId) {
     try {
-      const handler = metro.findByProps("handleTapChannel");
-      if (handler && typeof handler.handleTapChannel === "function") {
-        handler.handleTapChannel(channelId);
-        return true;
+      const RA = l.findByProps("handleTapChannel");
+      if (RA && typeof RA.handleTapChannel === "function") {
+        RA.handleTapChannel(channelId);
+        return !0;
       }
     } catch {}
     try {
-      const handler = metro.findByProps("handlePressChannel");
-      if (handler && typeof handler.handlePressChannel === "function") {
-        handler.handlePressChannel(channelId);
-        return true;
+      const RA2 = l.findByProps("handlePressChannel");
+      if (RA2 && typeof RA2.handlePressChannel === "function") {
+        RA2.handlePressChannel(channelId);
+        return !0;
       }
     } catch {}
     try {
-      const NavRef = metro.findByProps("getRootNavigationRef");
-      const ref = NavRef?.getRootNavigationRef?.();
+      const NavRef = l.findByProps("getRootNavigationRef");
+      const ref =
+        NavRef &&
+        typeof NavRef.getRootNavigationRef === "function" &&
+        NavRef.getRootNavigationRef();
       if (ref && typeof ref.navigate === "function") {
-        for (const route of ["messages", "Messages", "Channel", "channel"]) {
-          try { ref.navigate(route, { channelId }); return true; } catch {}
+        const routes = ["messages", "Messages", "Channel", "channel"];
+        for (let i = 0; i < routes.length; i++) {
+          try {
+            ref.navigate(routes[i], { channelId: channelId });
+            return !0;
+          } catch {}
         }
       }
     } catch {}
-    return false;
+    return !1;
   }
-
-  function tryNavigate(channelId) {
-    if (!channelId) return false;
-
-    const sc = metro.findByProps("selectChannel");
+  function _tryNavigate(channelId) {
+    if (!channelId) return !1;
+    const sc = l.findByProps("selectChannel");
     if (sc && typeof sc.selectChannel === "function") {
       const shapes = [
-        { guildId: null, channelId },
-        { guildId: "@me", channelId },
-        { channelId },
+        { guildId: null, channelId: channelId },
+        { guildId: "@me", channelId: channelId },
+        { channelId: channelId },
         channelId,
       ];
-      for (const shape of shapes) {
-        try { sc.selectChannel(shape); pushMessagesScreen(channelId); return true; } catch {}
+      for (let i = 0; i < shapes.length; i++) {
+        try {
+          sc.selectChannel(shapes[i]);
+          _pushMessagesScreen(channelId);
+          return !0;
+        } catch {}
       }
     }
-
-    if (pushMessagesScreen(channelId)) return true;
-
-    const tr = metro.findByProps("transitionToChannel");
+    if (_pushMessagesScreen(channelId)) return !0;
+    const tr = l.findByProps("transitionToChannel");
     if (tr && typeof tr.transitionToChannel === "function") {
-      try { tr.transitionToChannel(channelId); return true; } catch {}
-    }
-
-    const oc = metro.findByProps("openChannel");
-    if (oc && typeof oc.openChannel === "function") {
-      try { oc.openChannel({ channelId }); return true; } catch {}
-    }
-
-    return false;
-  }
-
-  function findExistingDM(userId) {
-    try {
-      const ChannelStore = metro.findByStoreName("ChannelStore");
-      const PrivateChannelStore = metro.findByStoreName("PrivateChannelStore");
-
-      let channelId = null;
       try {
-        if (PrivateChannelStore && typeof PrivateChannelStore.getDMFromUserId === "function")
-          channelId = PrivateChannelStore.getDMFromUserId(userId);
+        tr.transitionToChannel(channelId);
+        return !0;
       } catch {}
-
-      if (channelId) {
-        const ch = ChannelStore?.getChannel?.(channelId);
-        if (ch && ch.type === 1) return channelId;
+    }
+    const oc = l.findByProps("openChannel");
+    if (oc && typeof oc.openChannel === "function") {
+      try {
+        oc.openChannel({ channelId: channelId });
+        return !0;
+      } catch {}
+    }
+    return !1;
+  }
+  function _findExistingDM(id) {
+    try {
+      const CS = l.findByStoreName("ChannelStore");
+      const PCS = l.findByStoreName("PrivateChannelStore");
+      let cid = null;
+      try {
+        if (PCS && typeof PCS.getDMFromUserId === "function")
+          cid = PCS.getDMFromUserId(id);
+      } catch {}
+      if (cid) {
+        const ch = CS && CS.getChannel ? CS.getChannel(cid) : null;
+        if (ch && ch.type === 1) return cid;
       }
-
       let ids = [];
       try {
-        if (PrivateChannelStore && typeof PrivateChannelStore.getPrivateChannelIds === "function")
-          ids = PrivateChannelStore.getPrivateChannelIds() || [];
+        if (PCS && typeof PCS.getPrivateChannelIds === "function")
+          ids = PCS.getPrivateChannelIds() || [];
       } catch {}
-
-      for (const id of ids) {
-        const ch = ChannelStore?.getChannel?.(id);
+      for (let i = 0; i < ids.length; i++) {
+        const ch = CS && CS.getChannel ? CS.getChannel(ids[i]) : null;
         if (!ch || ch.type !== 1) continue;
-        const recipients = ch.recipients || [];
-        if (recipients.length !== 1) continue;
-        const rid = typeof recipients[0] === "string" ? recipients[0] : recipients[0]?.id;
-        if (rid === userId) return id;
+        const r = ch.recipients || [];
+        if (r.length !== 1) continue;
+        const rid = typeof r[0] === "string" ? r[0] : r[0] && r[0].id;
+        if (rid === id) return ids[i];
       }
     } catch {}
     return null;
   }
-
-  function isDMChannel(channelId) {
+  function _isDM(channelId) {
     try {
-      const ChannelStore = metro.findByStoreName("ChannelStore");
-      const ch = ChannelStore?.getChannel?.(channelId);
+      const CS = l.findByStoreName("ChannelStore");
+      const ch = CS && CS.getChannel ? CS.getChannel(channelId) : null;
       return !!ch && ch.type === 1;
     } catch {}
-    return false;
-  }
-
-  function tryOpenPrivate(acts, id) {
-    if (!acts || typeof acts.openPrivateChannel !== "function") return false;
-    for (const shape of [id, { recipientId: id }, { userId: id }]) {
-      try { acts.openPrivateChannel(shape); return true; } catch {}
-    }
-    return false;
+    return !1;
   }
 
   async function openDM(userId) {
-    const id = extractUserId(userId);
+    const id = _extractUserId(userId);
     if (!id) {
-      showToast("Invalid user - expected an ID, mention, or profile link.");
+      tt("Invalid user - expected an ID, mention, or profile link.");
       return null;
     }
+    const acts = l.findByProps("openPrivateChannel");
+    const ens = l.findByProps("ensurePrivateChannel");
 
-    const acts = metro.findByProps("openPrivateChannel");
-    const ens = metro.findByProps("ensurePrivateChannel");
-
-    let channelId = findExistingDM(id);
-    if (channelId && tryNavigate(channelId)) {
-      showToast("Opening DM with " + dmNameFor(id));
-      return { channelId, userId: id };
+    let channelId = _findExistingDM(id);
+    if (channelId && _tryNavigate(channelId)) {
+      tt("Opening DM with " + _dmNameFor(id));
+      return { channelId: channelId, userId: id };
     }
 
     if (!channelId && ens && typeof ens.ensurePrivateChannel === "function") {
-      try { channelId = await ens.ensurePrivateChannel(id); } catch {}
+      try {
+        channelId = await ens.ensurePrivateChannel(id);
+      } catch {}
     }
-
     if (channelId) {
-      if (isDMChannel(channelId)) {
-        if (tryNavigate(channelId)) {
-          showToast("Opening DM with " + dmNameFor(id));
-          return { channelId, userId: id };
+      if (_isDM(channelId)) {
+        if (_tryNavigate(channelId)) {
+          tt("Opening DM with " + _dmNameFor(id));
+          return { channelId: channelId, userId: id };
         }
       } else {
-        const real = findExistingDM(id);
-        if (real && tryNavigate(real)) {
-          showToast("Opening DM with " + dmNameFor(id));
+        const real = _findExistingDM(id);
+        if (real && _tryNavigate(real)) {
+          tt("Opening DM with " + _dmNameFor(id));
           return { channelId: real, userId: id };
         }
-        showToast("This build's create call makes a group, not a 1:1 DM.");
+        tt("This build's create call makes a group, not a 1:1 DM.");
         return null;
       }
     }
 
-    if (tryOpenPrivate(acts, id)) {
-      const real = findExistingDM(id);
-      if (real && tryNavigate(real)) {
-        showToast("Opening DM with " + dmNameFor(id));
+    if (_tryOpenPrivate(acts, id)) {
+      const real = _findExistingDM(id);
+      if (real && _tryNavigate(real)) {
+        tt("Opening DM with " + _dmNameFor(id));
         return { channelId: real, userId: id };
       }
-      showToast("Opened a channel but couldn't confirm it's a 1:1 DM.");
+      tt("Opened a channel but couldn't confirm it's a 1:1 DM.");
       return null;
     }
 
-    showToast("Couldn't open a DM - no working DM API found on this build.");
+    tt("Couldn't open a DM - no working DM API found on this build.");
     return null;
   }
-
-  // ─── Fill From Chat ─────────────────────────────────────────────────────────
-
-  function fillFromChat() {
-    try {
-      const channelId = getCurrentChannelId();
-      if (!channelId) return null;
-
-      let channel = null;
-      try { channel = ChannelModule?.getChannel?.(channelId); } catch {}
-      if (!channel) {
-        try { channel = metro.findByStoreName("ChannelStore")?.getChannel?.(channelId); } catch {}
-      }
-
-      const recipients = channel?.recipients;
-      if (recipients && recipients.length) {
-        let id = recipients[0];
-        if (id && typeof id === "object") id = id.id || id.userId || id.user_id;
-        if (id) return "" + id;
-      }
-
-      const rawRecipients = channel?.rawRecipients;
-      if (rawRecipients && rawRecipients.length && rawRecipients[0]) {
-        const id = rawRecipients[0].id || rawRecipients[0].user_id;
-        if (id) return "" + id;
-      }
-
-      try {
-        const ids = metro.findByProps("getDMUserIds")?.getDMUserIds?.(channelId);
-        if (ids && ids.length) return "" + ids[0];
-      } catch {}
-
-      let messages = [];
-      try {
-        const msgs = MessageStore?.getMessages?.(channelId);
-        messages = msgs && msgs.toArray ? msgs.toArray() : (msgs && msgs._array) || [];
-      } catch {}
-
-      const myId = UserStoreByName?.getCurrentUser?.()?.id;
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const authorId = messages[i]?.author?.id;
-        if (authorId && authorId !== myId) return "" + authorId;
-      }
-    } catch {}
-    return null;
-  }
-
-  // ─── Profile Management ─────────────────────────────────────────────────────
-
-  function fetchProfileSafe(uid) {
-    if (!uid) return;
-    try {
-      if (fetchProfileModule === undefined)
-        fetchProfileModule = metro.findByProps("fetchProfile") || null;
-    } catch {
-      fetchProfileModule = null;
-    }
-    if (fetchProfileModule && typeof fetchProfileModule.fetchProfile === "function") {
-      try {
-        const result = fetchProfileModule.fetchProfile(uid);
-        if (result && typeof result.catch === "function") result.catch(() => {});
-      } catch {}
-    }
-  }
-
-  function prefetchSources() {
-    let count = 0;
-    try {
-      const profiles = plugin.storage.profiles || {};
-      const seen = new Set();
-      for (const key in profiles) {
-        const sourceId = profiles[key]?.sourceId;
-        if (sourceId && !seen.has(sourceId)) {
-          seen.add(sourceId);
-          fetchProfileSafe(sourceId);
-          count++;
-        }
-      }
-    } catch {}
-    return count;
-  }
-
-  function saveProfile() {
-    try {
-      const id = ("" + (plugin.storage.profileId || "")).trim();
-      if (!/^\d{5,}$/.test(id)) {
-        showToast("Enter a valid numeric user ID first.");
-        return;
-      }
-
-      const name = ("" + (plugin.storage.profileName || "")).trim();
-      const avatar = ("" + (plugin.storage.profileAvatar || "")).trim();
-      const sourceId = ("" + (plugin.storage.profileSource || "")).trim().replace(/[^0-9]/g, "");
-      const isSelf = !!plugin.storage.profileSelf;
-
-      if (sourceId && sourceId === id) {
-        showToast("Source ID must differ from the user ID.");
-        return;
-      }
-
-      let joinedAt, accountDate;
-      let dateWarn = "";
-
-      const joinedRaw = ("" + (plugin.storage.profileJoined || "")).trim();
-      if (joinedRaw) {
-        const parsed = parseUserDate(joinedRaw);
-        if (parsed) joinedAt = parsed.toISOString();
-        else dateWarn += " (server date not understood, left default)";
-      }
-
-      const accountRaw = ("" + (plugin.storage.profileAccount || "")).trim();
-      if (accountRaw) {
-        const parsed = parseUserDate(accountRaw);
-        if (parsed) accountDate = parsed.toISOString();
-        else dateWarn += " (Discord date not understood, left default)";
-      }
-
-      if (!name && !avatar && !sourceId && !isSelf && !joinedAt && !accountDate) {
-        showToast("Set a name, avatar, source ID, or a date first.");
-        return;
-      }
-
-      const profiles = Object.assign({}, plugin.storage.profiles || {});
-      profiles[id] = {
-        name: name || undefined,
-        avatar: avatar || undefined,
-        sourceId: sourceId || undefined,
-        self: isSelf || undefined,
-        joinedAt,
-        accountDate,
-      };
-      plugin.storage.profiles = profiles;
-      plugin.storage._lastUpdate = Date.now();
-
-      cachedCurrentUserProxy = null;
-      cachedCurrentUser = null;
-      cachedCurrentUserId = null;
-      avatarSourceCache.clear();
-
-      if (sourceId) fetchProfileSafe(sourceId);
-
-      showToast(
-        "Saved profile for " + id +
-        (sourceId ? " (mirroring " + sourceId + ")" : "") +
-        (isSelf ? " [self-profile]" : "") +
-        "." + dateWarn
-      );
-    } catch {
-      showToast("Couldn't save that profile.");
-    }
-  }
-
-  function removeProfile(id) {
-    try {
-      const key = ("" + (id || plugin.storage.profileId || "")).trim();
-      const profiles = Object.assign({}, plugin.storage.profiles || {});
-      if (!profiles[key]) {
-        showToast("No profile saved for that ID.");
-        return;
-      }
-      delete profiles[key];
-      plugin.storage.profiles = profiles;
-      plugin.storage._lastUpdate = Date.now();
-      avatarSourceCache.delete(key);
-      showToast("Removed profile for " + key + ".");
-    } catch {
-      showToast("Couldn't remove that profile.");
-    }
-  }
-
-  // ─── Panel / Action Sheet ───────────────────────────────────────────────────
 
   function closePanel(nav) {
-    try { if (nav && typeof nav.goBack === "function") return void nav.goBack(); } catch {}
-    try { if (nav && typeof nav.pop === "function") return void nav.pop(); } catch {}
     try {
-      const navModule = metro.findByProps("pop", "popToTop", "push");
-      if (navModule && typeof navModule.pop === "function") return void navModule.pop();
+      if (nav && typeof nav.goBack === "function") return void nav.goBack();
+    } catch {}
+    try {
+      if (nav && typeof nav.pop === "function") return void nav.pop();
+    } catch {}
+    try {
+      const N2 = l.findByProps("pop", "popToTop", "push");
+      if (N2 && typeof N2.pop === "function") return void N2.pop();
     } catch {}
   }
-
   function PanelSheet() {
-    const panel = common.React.createElement(PluginExport.settings, { inSheet: true });
-    const RN = common.ReactNative || metro.findByProps("ScrollView", "View");
-    const spacer = RN?.View ? common.React.createElement(RN.View, { style: { height: 80 } }) : null;
-
+    const panel = n.React.createElement(J.settings, { inSheet: !0 });
+    const RN = n.ReactNative || l.findByProps("ScrollView", "View");
+    const spacer =
+      RN && RN.View
+        ? n.React.createElement(RN.View, { style: { height: 80 } })
+        : null;
     let ActionSheet = null;
     try {
-      ActionSheet = (metro.findByProps("ActionSheet", "ActionSheetRow") || {}).ActionSheet
-        || (metro.findByProps("ActionSheet") || {}).ActionSheet
-        || null;
+      ActionSheet =
+        (l.findByProps("ActionSheet", "ActionSheetRow") || {}).ActionSheet ||
+        (l.findByProps("ActionSheet") || {}).ActionSheet ||
+        (l.findByProps("ActionSheetRow") || {}).ActionSheet ||
+        null;
     } catch {}
-
-    if (ActionSheet) return common.React.createElement(ActionSheet, {}, panel, spacer);
+    if (ActionSheet)
+      return n.React.createElement(ActionSheet, {}, panel, spacer);
     if (!RN || !RN.ScrollView) return panel;
-
     let screenH = 800;
     try {
-      if (RN.Dimensions?.get) screenH = RN.Dimensions.get("window").height || 800;
+      if (RN.Dimensions && RN.Dimensions.get)
+        screenH = RN.Dimensions.get("window").height || 800;
     } catch {}
-
     const sheetMax = Math.round(screenH * 0.88);
-    return common.React.createElement(
+    return n.React.createElement(
       RN.View,
       {
         style: {
@@ -1391,25 +1036,24 @@
           maxHeight: sheetMax,
         },
       },
-      common.React.createElement(
+      n.React.createElement(
         RN.ScrollView,
         {
           style: { maxHeight: sheetMax - 10 },
           contentContainerStyle: { paddingBottom: 240 },
           keyboardShouldPersistTaps: "handled",
-          showsVerticalScrollIndicator: true,
-          nestedScrollEnabled: true,
+          showsVerticalScrollIndicator: !0,
+          nestedScrollEnabled: !0,
         },
         panel,
         spacer,
       ),
     );
   }
-
   function openPanel() {
     try {
-      if (ActionSheetModule && typeof ActionSheetModule.openLazy === "function") {
-        ActionSheetModule.openLazy(
+      if (_ && typeof _.openLazy === "function") {
+        _.openLazy(
           Promise.resolve({ default: PanelSheet }),
           "LocalMessageSpooferSheet",
           {},
@@ -1417,1263 +1061,1762 @@
         return;
       }
     } catch {}
-    showToast("Couldn't open the panel on this client. Open it from the Plugins list.");
+    tt("Couldn't open the panel on this client. Open it from the Plugins list.");
   }
-
-  // ─── Command Registration ───────────────────────────────────────────────────
-
-  function registerCommands() {
-    // Confirmed on Kettu: the API is vendetta.commands.registerCommand.
-    // Access it directly - do NOT scan globalThis (some globals throw when touched).
-    let cmds = null;
+  function fillFromChat() {
     try {
-      if (typeof vendetta !== "undefined" && vendetta && vendetta.commands && typeof vendetta.commands.registerCommand === "function") {
-        cmds = vendetta.commands;
-      }
-    } catch (e) {}
-    if (!cmds) {
+      const ch = Y();
+      if (!ch) return null;
+      let channel = null;
       try {
-        const m = metro.findByProps("registerCommand");
-        if (m && typeof m.registerCommand === "function") cmds = m;
-      } catch (e) {}
-    }
-
-    let reg = cmds && typeof cmds.registerCommand === "function"
-      ? cmds.registerCommand.bind(cmds)
-      : null;
-
-    if (!reg) {
-      warn("No command API found");
-      showToast("[Spoofer] No command API found");
-      return;
-    }
-
-    log("Command API found, registering commands...");
-
-    // If we already registered (e.g. immediate + delayed pass), tear those down first
-    // so we don't create duplicate commands.
-    try {
-      if (registerCommands._registered && registerCommands._registered.length) {
-        registerCommands._registered.forEach(function (un) { try { if (typeof un === "function") un(); } catch (e) {} });
+        channel = O?.getChannel?.(ch);
+      } catch {}
+      if (!channel) {
+        try {
+          channel = l.findByStoreName("ChannelStore")?.getChannel?.(ch);
+        } catch {}
       }
-    } catch (e) {}
-    registerCommands._registered = [];
-
-    // Register each command in isolation - if one throws, the rest still register.
-    function safeReg(def, label) {
+      let rec = channel?.recipients;
+      if (rec && rec.length) {
+        let id = rec[0];
+        if (id && typeof id === "object") id = id.id || id.userId || id.user_id;
+        if (id) return "" + id;
+      }
+      let raw = channel?.rawRecipients;
+      if (raw && raw.length && raw[0]) {
+        const id = raw[0].id || raw[0].user_id;
+        if (id) return "" + id;
+      }
       try {
-        const un = reg(def);
-        if (typeof un === "function") {
-          cleanupCallbacks.push(un);
-          registerCommands._registered.push(un);
-        }
-        return true;
-      } catch (e) {
-        warn("register " + label + " failed", e);
-        return false;
+        const ids = l.findByProps("getDMUserIds")?.getDMUserIds?.(ch);
+        if (ids && ids.length) return "" + ids[0];
+      } catch {}
+      let arr = [];
+      try {
+        const msgs = G?.getMessages?.(ch);
+        arr =
+          msgs && msgs.toArray ? msgs.toArray() : (msgs && msgs._array) || [];
+      } catch {}
+      const meId = j?.getCurrentUser?.()?.id;
+      for (let i2 = arr.length - 1; i2 >= 0; i2--) {
+        const au = arr[i2] && arr[i2].author && arr[i2].author.id;
+        if (au && au !== meId) return "" + au;
       }
+    } catch {}
+    return null;
+  }
+  function clearSaved() {
+    try {
+      const count = (e.storage.savedMessages || []).length;
+      L([]);
+      tt(
+        "Cleared " + count + " saved message" + (count === 1 ? "" : "s") + ".",
+      );
+    } catch {
+      tt("Couldn't clear saved messages.");
     }
-
-    safeReg({
-      name: "spoofer",
-      displayName: "spoofer",
-      description: "Open the Local Message Spoofer panel.",
-      displayDescription: "Open the Local Message Spoofer panel.",
-      type: 1, inputType: 1, applicationId: "-1", options: [],
-      execute: () => openPanel(),
-    }, "spoofer");
-
-    safeReg({
-      name: "filluid",
-      displayName: "filluid",
-      description: "Fill the spoofer User ID from this chat, or pass a specific ID.",
-      displayDescription: "Fill the spoofer User ID from this chat, or pass a specific ID.",
-      type: 1, inputType: 1, applicationId: "-1",
-      options: [{
-        name: "userid", displayName: "userid",
-        description: "Optional: a specific user ID to set.",
-        displayDescription: "Optional: a specific user ID to set.",
-        type: 3, required: false,
-      }],
-      execute: (args) => {
-        try {
-          const map = Array.isArray(args)
-            ? Object.fromEntries(args.map((a) => [a?.name, a?.value]))
-            : args ?? {};
-          let id = ("" + (map.userid ?? "")).trim();
-          if (!id) id = fillFromChat();
-          if (id) { plugin.storage.userId = id; showToast("User ID set: " + id); }
-          else showToast("No user found here. Try: /filluid userid:123456789");
-        } catch { showToast("Couldn't set the User ID."); }
-      },
-    }, "filluid");
-
-    safeReg({
-      name: "clearfakes",
-      displayName: "clearfakes",
-      description: "Clear all saved fake messages (stops them replaying).",
-      displayDescription: "Clear all saved fake messages (stops them replaying).",
-      type: 1, inputType: 1, applicationId: "-1", options: [],
-      execute: () => clearSavedMessages(),
-    }, "clearfakes");
-
-    safeReg({
-      name: "dm",
-      displayName: "dm",
-      description: "Open a DM with a user by ID, mention, or profile link.",
-      displayDescription: "Open a DM with a user by ID, mention, or profile link.",
-      type: 1, inputType: 1, applicationId: "-1",
-      options: [{
-        name: "user", displayName: "user",
-        description: "User ID, mention, or profile URL.",
-        displayDescription: "User ID, mention, or profile URL.",
-        type: 3, required: true,
-      }],
-      execute: (args) => {
-        try {
-          const map = Array.isArray(args)
-            ? Object.fromEntries(args.map((a) => [a?.name, a?.value]))
-            : args ?? {};
-          openDM("" + (map.user ?? ""));
-        } catch { showToast("Couldn't run /dm."); }
-      },
-    }, "dm");
-
-    safeReg({
-      name: "sdm",
-      displayName: "sdm",
-      description: "Open a DM and add a local spoofed message.",
-      displayDescription: "Open a DM and add a local spoofed message.",
-      type: 1, inputType: 1, applicationId: "-1",
-      options: [
-        { name: "user", displayName: "user", description: "User ID, mention, or profile URL.", displayDescription: "User ID, mention, or profile URL.", type: 3, required: true },
-        { name: "message", displayName: "message", description: "The local-only spoofed message to add.", displayDescription: "The local-only spoofed message to add.", type: 3, required: true },
-      ],
-      execute: async (args) => {
-        try {
-          const map = Array.isArray(args)
-            ? Object.fromEntries(args.map((a) => [a?.name, a?.value]))
-            : args ?? {};
-
-          const result = await openDM("" + (map.user ?? ""));
-          if (!result) { showToast("Failed to open DM or user not found."); return; }
-
-          const content = ("" + (map.message ?? "")).trim();
-          if (!content) { showToast("Enter a message to spoof."); return; }
-
-          await new Promise((resolve) => setTimeout(resolve, 250));
-
-          const timestamp = nowISO();
-          const id = genId(timestamp);
-          await createFakeMessage(result.channelId, result.userId, content, timestamp, id);
-          saveMessage(result.channelId, result.userId, content, id, timestamp);
-          showToast("Spoofed message sent in DM.");
-        } catch (err) {
-          showToast("Error: " + (err.message || "unknown"));
+  }
+  function removeAllFakes() {
+    try {
+      const list = (e.storage.savedMessages || []).slice();
+      let removed = 0;
+      for (let i6 = 0; i6 < list.length; i6++) {
+        const rec = list[i6];
+        if (rec && rec.id && rec.channelId) {
+          try {
+            n.FluxDispatcher.dispatch({
+              type: "MESSAGE_DELETE",
+              id: rec.id,
+              channelId: rec.channelId,
+              otherPluginBypass: !0,
+            });
+            removed++;
+          } catch {}
         }
-      },
-    }, "sdm");
+      }
+      L([]);
+      tt(
+        "Removed " +
+          removed +
+          " spoofed message" +
+          (removed === 1 ? "" : "s") +
+          " and cleared saved.",
+      );
+    } catch {
+      tt("Couldn't remove spoofed messages.");
+    }
   }
-
-  // ─── Patching: Avatars ──────────────────────────────────────────────────────
-
-  function patchAvatars() {
+  let _fp;
+  function fetchProfileSafe(uid) {
+    if (!uid) return;
     try {
-      const AvatarURL = metro.findByProps("getUserAvatarURL");
-      if (AvatarURL && typeof AvatarURL.getUserAvatarURL === "function")
-        patches.push(patcher.after("getUserAvatarURL", AvatarURL, (args, ret) => {
-          try {
-            const id = firstProfiledId(args);
-            if (id) { const url = resolveAvatar(id); if (url) return url; }
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const AvatarSrc = metro.findByProps("getUserAvatarSource");
-      if (AvatarSrc && typeof AvatarSrc.getUserAvatarSource === "function")
-        patches.push(patcher.after("getUserAvatarSource", AvatarSrc, (args, ret) => {
-          try {
-            const id = firstProfiledId(args);
-            if (id) return mirrorSource(id, ret);
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const GuildAv = metro.findByProps("getGuildMemberAvatarURLSimple");
-      if (GuildAv && typeof GuildAv.getGuildMemberAvatarURLSimple === "function")
-        patches.push(patcher.after("getGuildMemberAvatarURLSimple", GuildAv, (args, ret) => {
-          try {
-            const id = firstProfiledId(args);
-            if (id) { const url = resolveAvatar(id); if (url) return url; }
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const currentUser = UserStoreByName?.getCurrentUser?.();
-      const proto = currentUser?.constructor?.prototype;
-      if (proto && typeof proto.getAvatarURL === "function")
-        patches.push(patcher.after("getAvatarURL", proto, function (args, ret) {
-          try {
-            const id = this?.id;
-            if (id && (plugin.storage.profiles || EMPTY)[id]) {
-              const url = resolveAvatar(id);
-              if (url) return url;
-            }
-          } catch {}
-          return ret;
-        }));
-    } catch {}
+      if (_fp === undefined) _fp = l.findByProps("fetchProfile") || null;
+    } catch {
+      _fp = null;
+    }
+    if (_fp && typeof _fp.fetchProfile === "function") {
+      try {
+        const r = _fp.fetchProfile(uid);
+        if (r && typeof r.catch === "function") r.catch(function () {});
+      } catch {}
+    }
   }
-
-  // ─── Patching: Names ────────────────────────────────────────────────────────
-
-  function patchNames() {
+  function prefetchSources() {
+    let n = 0;
     try {
-      if (UserStoreByName && typeof UserStoreByName.getUser === "function")
-        patches.push(patcher.after("getUser", UserStoreByName, (args, ret) => {
-          try {
-            const profiles = plugin.storage.profiles;
-            const id = args && args[0];
-            if (profiles && id && profiles[id] && ret) {
-              const displayName = resolveName(id);
-              const username = resolveUsername(id);
-              if (username && ret.username !== username) forceSet(ret, "username", username);
-              if (displayName && ret.globalName !== displayName) forceSet(ret, "globalName", displayName);
-              forceNull(ret, "avatarDecorationData");
-              forceNull(ret, "avatarDecoration");
-              forceNull(ret, "primaryGuild");
-              forceNull(ret, "clan");
-              forceSet(ret, "premiumType", 0);
-              forceNull(ret, "premiumSince");
-              forceNull(ret, "premiumGuildSince");
-              const created = resolveCreated(id);
-              if (created) forceSet(ret, "createdAt", created);
-              if (profiles[id].sourceId) {
-                const accent = resolveAccent(id);
-                if (accent != null) forceSet(ret, "accentColor", accent);
-              }
-            }
-          } catch {}
-          return ret;
-        }));
+      const profs = e.storage.profiles || {};
+      const seen = {};
+      for (const k in profs) {
+        const sid = profs[k] && profs[k].sourceId;
+        if (sid && !seen[sid]) {
+          seen[sid] = 1;
+          fetchProfileSafe(sid);
+          n++;
+        }
+      }
     } catch {}
-
+    return n;
+  }
+  function saveProfile() {
     try {
-      const GuildMemberStore = metro.findByStoreName("GuildMemberStore");
-
-      if (GuildMemberStore && typeof GuildMemberStore.getNick === "function")
-        patches.push(patcher.after("getNick", GuildMemberStore, (args, ret) => {
+      const id = ("" + (e.storage.profileId || "")).trim();
+      if (!/^\d{5,}$/.test(id)) {
+        tt("Enter a valid numeric user ID first.");
+        return;
+      }
+      const name = ("" + (e.storage.profileName || "")).trim();
+      const avatar = ("" + (e.storage.profileAvatar || "")).trim();
+      const sourceId = ("" + (e.storage.profileSource || ""))
+        .trim()
+        .replace(/[^0-9]/g, "");
+      const self = !!e.storage.profileSelf;
+      if (sourceId && sourceId === id) {
+        tt("Source ID must differ from the user ID.");
+        return;
+      }
+      let joinedAt = void 0,
+        accountDate = void 0,
+        dateWarn = "";
+      const joinedRaw = ("" + (e.storage.profileJoined || "")).trim();
+      if (joinedRaw) {
+        const jd = parseUserDate(joinedRaw);
+        if (jd) joinedAt = jd.toISOString();
+        else dateWarn += " (server date not understood, left default)";
+      }
+      const accountRaw = ("" + (e.storage.profileAccount || "")).trim();
+      if (accountRaw) {
+        const ad = parseUserDate(accountRaw);
+        if (ad) accountDate = ad.toISOString();
+        else dateWarn += " (Discord date not understood, left default)";
+      }
+      if (!name && !avatar && !sourceId && !self && !joinedAt && !accountDate) {
+        tt("Set a name, avatar, source ID, or a date first.");
+        return;
+      }
+      const p = Object.assign({}, e.storage.profiles || {});
+      p[id] = {
+        name: name || void 0,
+        avatar: avatar || void 0,
+        sourceId: sourceId || void 0,
+        self: self || void 0,
+        joinedAt: joinedAt,
+        accountDate: accountDate,
+      };
+      e.storage.profiles = p;
+      e.storage._lastUpdate = Date.now();
+      ((_cuProxy = null), (_cuReal = null), (_cuId = null));
+      try {
+        _avSrc.clear();
+      } catch {}
+      if (sourceId) fetchProfileSafe(sourceId);
+      tt(
+        "Saved profile for " +
+          id +
+          (sourceId ? " (mirroring " + sourceId + ")" : "") +
+          (self ? " [self-profile]" : "") +
+          "." +
+          dateWarn,
+      );
+    } catch {
+      tt("Couldn't save that profile.");
+    }
+  }
+  function removeProfile(id) {
+    try {
+      const key = ("" + (id || e.storage.profileId || "")).trim();
+      const p = Object.assign({}, e.storage.profiles || {});
+      if (!p[key]) {
+        tt("No profile saved for that ID.");
+        return;
+      }
+      delete p[key];
+      e.storage.profiles = p;
+      e.storage._lastUpdate = Date.now();
+      tt("Removed profile for " + key + ".");
+    } catch {
+      tt("Couldn't remove that profile.");
+    }
+  }
+  let D = null,
+    T = null,
+    E = [],
+    b = null,
+    K = [],
+    patchInfo = "(not loaded)";
+  var J = {
+    onLoad() {
+      try {
+        K.forEach(function (fn) {
           try {
-            const profiles = plugin.storage.profiles;
-            if (profiles && args) {
-              const id = profiles[args[1]] ? args[1] : profiles[args[0]] ? args[0] : null;
-              if (id) { const nm = resolveName(id); if (nm) return nm; }
-            }
+            fn();
           } catch {}
-          return ret;
-        }));
-
-      if (GuildMemberStore && typeof GuildMemberStore.getMember === "function")
-        patches.push(patcher.after("getMember", GuildMemberStore, (args, ret) => {
-          try {
-            const profiles = plugin.storage.profiles;
-            if (profiles && args && ret) {
-              const id = profiles[args[1]] ? args[1] : profiles[args[0]] ? args[0] : null;
-              if (id) {
-                const nm = resolveName(id);
-                if (nm) {
-                  try { ret.nick = nm; } catch {}
-                  if ("nickname" in ret) try { ret.nickname = nm; } catch {}
-                }
-                const joined = resolveJoined(id);
-                if (joined) {
-                  forceSet(ret, "joinedAt", joined);
-                  if ("joinedAtTimestamp" in ret)
-                    forceSet(ret, "joinedAtTimestamp", new Date(joined).getTime());
-                }
+        });
+      } catch {}
+      K = [];
+      try {
+        const cmds = globalThis.vendetta?.commands;
+        const reg =
+          cmds && typeof cmds.registerCommand === "function"
+            ? cmds.registerCommand.bind(cmds)
+            : null;
+        if (reg) {
+          const u1 = reg({
+            name: "spoofer",
+            displayName: "spoofer",
+            description: "Open the Local Message Spoofer panel.",
+            displayDescription: "Open the Local Message Spoofer panel.",
+            type: 1,
+            inputType: 1,
+            applicationId: "-1",
+            options: [],
+            execute: function () {
+              openPanel();
+            },
+          });
+          if (typeof u1 === "function") K.push(u1);
+          const u2 = reg({
+            name: "filluid",
+            displayName: "filluid",
+            description:
+              "Fill the spoofer User ID from this chat, or pass a specific ID.",
+            displayDescription:
+              "Fill the spoofer User ID from this chat, or pass a specific ID.",
+            type: 1,
+            inputType: 1,
+            applicationId: "-1",
+            options: [
+              {
+                name: "userid",
+                displayName: "userid",
+                description: "Optional: a specific user ID to set.",
+                displayDescription: "Optional: a specific user ID to set.",
+                type: 3,
+                required: !1,
+              },
+            ],
+            execute: function (args) {
+              try {
+                const map = Array.isArray(args)
+                  ? Object.fromEntries(
+                      args.map(function (aa) {
+                        return [aa?.name, aa?.value];
+                      }),
+                    )
+                  : args ?? {};
+                let id = ("" + (map.userid ?? "")).trim();
+                if (!id) id = fillFromChat();
+                if (id) {
+                  e.storage.userId = id;
+                  tt("User ID set: " + id);
+                } else
+                  tt("No user found here. Try: /filluid userid:123456789");
+              } catch (err2) {
+                tt("Couldn't set the User ID.");
               }
-            }
-          } catch {}
-          return ret;
-        }));
+            },
+          });
+          if (typeof u2 === "function") K.push(u2);
+          const u3 = reg({
+            name: "clearfakes",
+            displayName: "clearfakes",
+            description: "Clear all saved fake messages (stops them replaying).",
+            displayDescription:
+              "Clear all saved fake messages (stops them replaying).",
+            type: 1,
+            inputType: 1,
+            applicationId: "-1",
+            options: [],
+            execute: function () {
+              clearSaved();
+            },
+          });
+          if (typeof u3 === "function") K.push(u3);
+          const u4 = reg({
+            name: "dm",
+            displayName: "dm",
+            description: "Open a DM with a user by ID, mention, or profile link.",
+            displayDescription:
+              "Open a DM with a user by ID, mention, or profile link.",
+            type: 1,
+            inputType: 1,
+            applicationId: "-1",
+            options: [
+              {
+                name: "user",
+                displayName: "user",
+                description: "User ID, mention, or profile URL.",
+                displayDescription: "User ID, mention, or profile URL.",
+                type: 3,
+                required: !0,
+              },
+            ],
+            execute: function (args) {
+              try {
+                const map = Array.isArray(args)
+                  ? Object.fromEntries(
+                      args.map(function (aa) {
+                        return [aa?.name, aa?.value];
+                      }),
+                    )
+                  : args ?? {};
+                openDM("" + (map.user ?? ""));
+              } catch {
+                tt("Couldn't run /dm.");
+              }
+            },
+          });
+          if (typeof u4 === "function") K.push(u4);
 
-      if (GuildMemberStore && typeof GuildMemberStore.getMembers === "function")
-        patches.push(patcher.after("getMembers", GuildMemberStore, (args, ret) => {
-          try {
-            if (!hasAnyProfile()) return ret;
-            const profiles = plugin.storage.profiles;
-            if (profiles && ret) {
-              const arr = Array.isArray(ret) ? ret
-                : (ret && typeof ret === "object") ? Object.values(ret) : null;
-              if (arr) {
-                for (const member of arr) {
-                  const mid = member && (member.userId || member.user?.id);
-                  if (mid && profiles[mid]) {
-                    const nm = resolveName(mid);
+          const sdmCommand = reg({
+            name: "sdm",
+            displayName: "sdm",
+            description: "Open a DM and add a local spoofed message.",
+            displayDescription: "Open a DM and add a local spoofed message.",
+            type: 1,
+            inputType: 1,
+            applicationId: "-1",
+            options: [
+              {
+                name: "user",
+                displayName: "user",
+                description: "User ID, mention, or profile URL.",
+                displayDescription: "User ID, mention, or profile URL.",
+                type: 3,
+                required: !0,
+              },
+              {
+                name: "message",
+                displayName: "message",
+                description: "The local-only spoofed message to add.",
+                displayDescription: "The local-only spoofed message to add.",
+                type: 3,
+                required: !0,
+              },
+            ],
+            execute: async function (args) {
+              try {
+                const map = Array.isArray(args)
+                  ? Object.fromEntries(
+                      args.map(function (aa) {
+                        return [aa?.name, aa?.value];
+                      }),
+                    )
+                  : args ?? {};
+
+                const result = await openDM("" + (map.user ?? ""));
+                if (!result) {
+                  tt("Failed to open DM or user not found.");
+                  return;
+                }
+
+                const content = ("" + (map.message ?? "")).trim();
+                if (!content) {
+                  tt("Enter a message to spoof.");
+                  return;
+                }
+
+                await new Promise(function (resolve) {
+                  setTimeout(resolve, 250);
+                });
+
+                const timestamp = nowISO();
+                const id = genId(timestamp);
+
+                await P(result.channelId, result.userId, content, timestamp, id);
+                z(result.channelId, result.userId, content, id, timestamp);
+
+                tt("Spoofed message sent in DM.");
+              } catch (e) {
+                tt("Error: " + (e.message || "unknown"));
+              }
+            },
+          });
+          if (typeof sdmCommand === "function") K.push(sdmCommand);
+        }
+      } catch {}
+
+      b = y.before("dispatch", n.FluxDispatcher, function (s) {
+        const [c] = s;
+        if (
+          c.type === "MESSAGE_UPDATE" &&
+          c.message?.fake &&
+          !c.otherPluginBypass &&
+          !S
+        )
+          return [];
+      });
+      try {
+        const AV = l.findByProps("getUserAvatarURL");
+        if (AV && typeof AV.getUserAvatarURL === "function")
+          E.push(
+            y.after("getUserAvatarURL", AV, function (a, ret) {
+              try {
+                const id = firstProfiledId(a);
+                if (id) {
+                  const o = resolveAvatar(id);
+                  if (o) return o;
+                }
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const AV2 = l.findByProps("getUserAvatarSource");
+        if (AV2 && typeof AV2.getUserAvatarSource === "function")
+          E.push(
+            y.after("getUserAvatarSource", AV2, function (a, ret) {
+              try {
+                const id = firstProfiledId(a);
+                if (id) return mirrorSource(id, ret);
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const GAV = l.findByProps("getGuildMemberAvatarURLSimple");
+        if (GAV && typeof GAV.getGuildMemberAvatarURLSimple === "function")
+          E.push(
+            y.after("getGuildMemberAvatarURLSimple", GAV, function (a, ret) {
+              try {
+                const id = firstProfiledId(a);
+                if (id) {
+                  const o = resolveAvatar(id);
+                  if (o) return o;
+                }
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const cu = j && j.getCurrentUser && j.getCurrentUser();
+        const proto = cu && cu.constructor && cu.constructor.prototype;
+        if (proto && typeof proto.getAvatarURL === "function")
+          E.push(
+            y.after("getAvatarURL", proto, function (a, ret) {
+              try {
+                const id = this && this.id;
+                if (id && (e.storage.profiles || EMPTY)[id]) {
+                  const o = resolveAvatar(id);
+                  if (o) return o;
+                }
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        if (j && typeof j.getUser === "function")
+          E.push(
+            y.after("getUser", j, function (a, ret) {
+              try {
+                const profs = e.storage.profiles;
+                const id = a && a[0];
+                if (profs && id && profs[id] && ret) {
+                  const dn = resolveName(id);
+                  const un = resolveUsername(id);
+                  if (un && ret.username !== un) forceSet(ret, "username", un);
+                  if (dn && ret.globalName !== dn)
+                    forceSet(ret, "globalName", dn);
+                  forceNull(ret, "avatarDecorationData");
+                  forceNull(ret, "avatarDecoration");
+                  forceNull(ret, "primaryGuild");
+                  forceNull(ret, "clan");
+                  forceSet(ret, "premiumType", 0);
+                  forceNull(ret, "premiumSince");
+                  forceNull(ret, "premiumGuildSince");
+                  const ca0 = resolveCreated(id);
+                  if (ca0) forceSet(ret, "createdAt", ca0);
+                  if (profs[id].sourceId) {
+                    const ac = resolveAccent(id);
+                    if (ac != null) forceSet(ret, "accentColor", ac);
+                  }
+                }
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const GMS = l.findByStoreName("GuildMemberStore");
+        if (GMS && typeof GMS.getNick === "function")
+          E.push(
+            y.after("getNick", GMS, function (a, ret) {
+              try {
+                const profs = e.storage.profiles;
+                if (profs && a) {
+                  const id = profs[a[1]] ? a[1] : profs[a[0]] ? a[0] : null;
+                  if (id) {
+                    const nm = resolveName(id);
+                    if (nm) return nm;
+                  }
+                }
+              } catch {}
+              return ret;
+            }),
+          );
+        if (GMS && typeof GMS.getMember === "function")
+          E.push(
+            y.after("getMember", GMS, function (a, ret) {
+              try {
+                const profs = e.storage.profiles;
+                if (profs && a && ret) {
+                  const id = profs[a[1]] ? a[1] : profs[a[0]] ? a[0] : null;
+                  if (id) {
+                    const nm = resolveName(id);
                     if (nm) {
-                      forceSet(member, "nick", nm);
-                      if ("nickname" in member) forceSet(member, "nickname", nm);
+                      if (ret.nick !== nm) {
+                        try {
+                          ret.nick = nm;
+                        } catch {}
+                      }
+                      if ("nickname" in ret && ret.nickname !== nm) {
+                        try {
+                          ret.nickname = nm;
+                        } catch {}
+                      }
                     }
-                    const joined = resolveJoined(mid);
-                    if (joined) {
-                      forceSet(member, "joinedAt", joined);
-                      if ("joinedAtTimestamp" in member)
-                        forceSet(member, "joinedAtTimestamp", new Date(joined).getTime());
+                    const ja = resolveJoined(id);
+                    if (ja) {
+                      forceSet(ret, "joinedAt", ja);
+                      if ("joinedAtTimestamp" in ret)
+                        forceSet(
+                          ret,
+                          "joinedAtTimestamp",
+                          new Date(ja).getTime(),
+                        );
                     }
                   }
                 }
-              }
-            }
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const NicknameModule = metro.findByProps("getNickname");
-      if (NicknameModule && typeof NicknameModule.getNickname === "function")
-        patches.push(patcher.after("getNickname", NicknameModule, (args, ret) => {
-          try {
-            const profiles = plugin.storage.profiles;
-            if (profiles && args) {
-              for (let i = 0; i < args.length; i++) {
-                const id = extractId(args[i]);
-                if (id && profiles[id]) { const nm = resolveName(id); if (nm) return nm; }
-              }
-            }
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const NameModule = metro.findByProps("getName");
-      if (NameModule && typeof NameModule.getName === "function")
-        patches.push(patcher.after("getName", NameModule, (args, ret) => {
-          try {
-            const profiles = plugin.storage.profiles;
-            if (profiles && args) {
-              for (let i = 0; i < args.length; i++) {
-                const id = extractId(args[i]);
-                if (id && profiles[id]) { const nm = resolveName(id); if (nm) return nm; }
-              }
-            }
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-  }
-
-  // ─── Patching: Banners & Decorations ────────────────────────────────────────
-
-  function patchBannersAndDecorations() {
-    try {
-      const BannerModule = metro.findByProps("getUserBannerURL");
-      if (BannerModule && typeof BannerModule.getUserBannerURL === "function")
-        patches.push(patcher.after("getUserBannerURL", BannerModule, (args, ret) => {
-          try {
-            const id = firstProfiledId(args);
-            const prof = id && getProfile(id);
-            if (prof && prof.sourceId) return resolveBanner(id);
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const currentUser = UserStoreByName?.getCurrentUser?.();
-      const proto = currentUser?.constructor?.prototype;
-      if (proto && typeof proto.getBannerURL === "function")
-        patches.push(patcher.after("getBannerURL", proto, function (args, ret) {
-          try {
-            const id = this?.id;
-            const prof = id && getProfile(id);
-            if (prof && prof.sourceId) return resolveBanner(id);
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const DecoModule = metro.findByProps("getAvatarDecorationURL");
-      if (DecoModule && typeof DecoModule.getAvatarDecorationURL === "function")
-        patches.push(patcher.after("getAvatarDecorationURL", DecoModule, (args, ret) => {
-          try {
-            const id = extractId(args && args[0]);
-            if (id && (plugin.storage.profiles || EMPTY)[id]) return null;
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const currentUser = UserStoreByName?.getCurrentUser?.();
-      const proto = currentUser?.constructor?.prototype;
-      if (proto && typeof proto.getAvatarDecorationURL === "function")
-        patches.push(patcher.after("getAvatarDecorationURL", proto, function (args, ret) {
-          try {
-            const id = this?.id;
-            if (id && (plugin.storage.profiles || EMPTY)[id]) return null;
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-  }
-
-  // ─── Patching: User Profile Store ───────────────────────────────────────────
-
-  function patchUserProfile() {
-    try {
-      const UserProfileStore = metro.findByStoreName("UserProfileStore");
-      if (UserProfileStore && typeof UserProfileStore.getUserProfile === "function")
-        patches.push(patcher.after("getUserProfile", UserProfileStore, (args, ret) => {
-          try {
-            const profiles = plugin.storage.profiles;
-            const id = args && args[0];
-            if (profiles && id && profiles[id] && ret) {
-              const prof = profiles[id];
-              forceNull(ret, "avatarDecoration");
-              forceNull(ret, "avatarDecorationData");
-              forceNull(ret, "profileEffectId");
-              forceNull(ret, "primaryGuild");
-              forceNull(ret, "clan");
-              forceSet(ret, "badges", []);
-              forceSet(ret, "premiumType", 0);
-              forceNull(ret, "premiumSince");
-              forceNull(ret, "premiumGuildSince");
-
-              if (prof.sourceId && !resolving.has("p" + id)) {
-                resolving.add("p" + id);
-                try {
-                  const sourceProfile = UserProfileStore.getUserProfile(prof.sourceId);
-                  if (sourceProfile) {
-                    if (sourceProfile.bio != null) forceSet(ret, "bio", sourceProfile.bio);
-                    if (sourceProfile.pronouns != null) forceSet(ret, "pronouns", sourceProfile.pronouns);
-                    if (sourceProfile.accentColor != null) forceSet(ret, "accentColor", sourceProfile.accentColor);
-                    if (sourceProfile.themeColors != null) forceSet(ret, "themeColors", sourceProfile.themeColors);
-                  }
-                  let bannerHash = null;
-                  try {
-                    const srcUser = UserStoreByName.getUser(prof.sourceId);
-                    bannerHash = srcUser?.banner || sourceProfile?.banner || null;
-                  } catch {}
-                  forceSet(ret, "banner", bannerHash);
-                } catch {
-                } finally {
-                  resolving.delete("p" + id);
+              } catch {}
+              return ret;
+            }),
+          );
+        if (GMS && typeof GMS.getMembers === "function")
+          E.push(
+            y.after("getMembers", GMS, function (a, ret) {
+              try {
+                if (!anyProf()) return ret;
+                const profs = e.storage.profiles;
+                if (profs && ret) {
+                  const arr = Array.isArray(ret)
+                    ? ret
+                    : ret && typeof ret === "object"
+                      ? Object.values(ret)
+                      : null;
+                  if (arr)
+                    for (let i3 = 0; i3 < arr.length; i3++) {
+                      const m = arr[i3];
+                      const mid = m && (m.userId || (m.user && m.user.id));
+                      if (mid && profs[mid]) {
+                        const nm = resolveName(mid);
+                        if (nm) {
+                          forceSet(m, "nick", nm);
+                          if ("nickname" in m) forceSet(m, "nickname", nm);
+                        }
+                        const ja = resolveJoined(mid);
+                        if (ja) {
+                          forceSet(m, "joinedAt", ja);
+                          if ("joinedAtTimestamp" in m)
+                            forceSet(
+                              m,
+                              "joinedAtTimestamp",
+                              new Date(ja).getTime(),
+                            );
+                        }
+                      }
+                    }
                 }
-              }
-            }
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const BadgeModule = metro.findByProps("getBadges");
-      if (BadgeModule && typeof BadgeModule.getBadges === "function")
-        patches.push(patcher.after("getBadges", BadgeModule, (args, ret) => {
-          try { const id = firstProfiledId(args); if (id) return []; } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const BadgeModule2 = metro.findByProps("getUserProfileBadges");
-      if (BadgeModule2 && typeof BadgeModule2.getUserProfileBadges === "function")
-        patches.push(patcher.after("getUserProfileBadges", BadgeModule2, (args, ret) => {
-          try { const id = firstProfiledId(args); if (id) return []; } catch {}
-          return ret;
-        }));
-    } catch {}
-  }
-
-  // ─── Patching: Self Identity ────────────────────────────────────────────────
-
-  function patchSelfIdentity() {
-    try {
-      if (UserStoreByName && typeof UserStoreByName.getCurrentUser === "function")
-        patches.push(patcher.after("getCurrentUser", UserStoreByName, (args, ret) => {
-          try {
-            if (selfActive && selfId && ret) return spoofCurrentUser(ret, selfId);
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-
-    try {
-      const IsCurrentUser = metro.findByProps("isCurrentUser");
-      if (IsCurrentUser && typeof IsCurrentUser.isCurrentUser === "function")
-        patches.push(patcher.after("isCurrentUser", IsCurrentUser, (args, ret) => {
-          try {
-            const profiles = plugin.storage.profiles;
-            const id = extractId(args && args[0]) || (args && args[0]);
-            if (profiles && id && profiles[id] && profiles[id].self) return true;
-          } catch {}
-          return ret;
-        }));
-
-      const IsMe = metro.findByProps("isMe");
-      if (IsMe && typeof IsMe.isMe === "function")
-        patches.push(patcher.after("isMe", IsMe, (args, ret) => {
-          try {
-            const profiles = plugin.storage.profiles;
-            const id = extractId(args && args[0]) || (args && args[0]);
-            if (profiles && id && profiles[id] && profiles[id].self) return true;
-          } catch {}
-          return ret;
-        }));
-    } catch {}
-  }
-
-  // ─── Patching: Message Actions & Context Menu ───────────────────────────────
-
-  function patchMessageActions() {
-    if (FluxDispatcher) {
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
       try {
-        dispatchGuard = patcher.before("dispatch", FluxDispatcher, (args) => {
-          const [event] = args;
-          if (event.type === "MESSAGE_UPDATE" && event.message?.fake && !event.otherPluginBypass && !isLocalEditing)
-            return [];
-        });
-      } catch (err) { warn("dispatchGuard patch failed", err); }
-    }
-
-    if (!MessageActions) {
-      warn("MessageActions not found - edit patching skipped");
-      return;
-    }
-
-    patches.push(patcher.before("editMessage", MessageActions, (args) => {
-      const [channelId, messageId, payload] = args;
-      if (isLocalEditing) {
-        const original = originalMessages.get(messageId);
-        if (!original) return;
-
-        const saved = plugin.storage.savedMessages || [];
-        const record = saved.find((m) => m.id === messageId);
-        if (record) {
-          record.content = payload.content;
-          plugin.storage.savedMessages = saved;
-          plugin.storage._lastUpdate = Date.now();
-        }
-
-        dispatchFlux({
-          type: "MESSAGE_UPDATE",
-          message: { ...original, content: payload.content, edited_timestamp: null },
-          otherPluginBypass: true,
-        });
-        return [];
-      }
-    }));
-
-    patches.push(patcher.after("endEditMessage", MessageActions, () => {
-      if (isLocalEditing) isLocalEditing = false;
-    }));
-  }
-
-  function patchActionSheet() {
-    try {
-      if (ActionSheetModule && typeof ActionSheetModule.hideActionSheet === "function")
-        patches.push(patcher.after("hideActionSheet", ActionSheetModule, () => {
-          try {
-            if (selfActive && Date.now() - selfAt > 400) {
-              selfActive = false;
-              selfId = null;
-            }
-          } catch {}
-        }));
-    } catch {}
-
-    patches.push(patcher.before("openLazy", ActionSheetModule, ([promise, name, opts]) => {
+        const NK = l.findByProps("getNickname");
+        if (NK && typeof NK.getNickname === "function")
+          E.push(
+            y.after("getNickname", NK, function (a, ret) {
+              try {
+                const profs = e.storage.profiles;
+                if (profs && a) {
+                  for (let i4 = 0; i4 < a.length; i4++) {
+                    const id = extractId(a[i4]);
+                    if (id && profs[id]) {
+                      const nm = resolveName(id);
+                      if (nm) return nm;
+                    }
+                  }
+                }
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
       try {
-        const profiles = plugin.storage.profiles;
-        if (profiles && opts) {
-          let foundId = null;
-          const candidates = [opts.userId, opts.user?.id, opts.user?.userId];
-          for (const candidate of candidates) {
-            if (candidate && profiles[candidate]?.self) { foundId = candidate; break; }
+        const NM = l.findByProps("getName");
+        if (NM && typeof NM.getName === "function")
+          E.push(
+            y.after("getName", NM, function (a, ret) {
+              try {
+                const profs = e.storage.profiles;
+                if (profs && a) {
+                  for (let i2 = 0; i2 < a.length; i2++) {
+                    const id = extractId(a[i2]);
+                    if (id && profs[id]) {
+                      const nm = resolveName(id);
+                      if (nm) return nm;
+                    }
+                  }
+                }
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const BU = l.findByProps("getUserBannerURL");
+        if (BU && typeof BU.getUserBannerURL === "function")
+          E.push(
+            y.after("getUserBannerURL", BU, function (a, ret) {
+              try {
+                const id = firstProfiledId(a);
+                const prof = id && (e.storage.profiles || EMPTY)[id];
+                if (prof && prof.sourceId) return resolveBanner(id);
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const cu = j && j.getCurrentUser && j.getCurrentUser();
+        const proto = cu && cu.constructor && cu.constructor.prototype;
+        if (proto && typeof proto.getBannerURL === "function")
+          E.push(
+            y.after("getBannerURL", proto, function (a, ret) {
+              try {
+                const id = this && this.id;
+                const prof = id && (e.storage.profiles || EMPTY)[id];
+                if (prof && prof.sourceId) return resolveBanner(id);
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const DU = l.findByProps("getAvatarDecorationURL");
+        if (DU && typeof DU.getAvatarDecorationURL === "function")
+          E.push(
+            y.after("getAvatarDecorationURL", DU, function (a, ret) {
+              try {
+                const id = extractId(a && a[0]);
+                if (id && (e.storage.profiles || EMPTY)[id]) return null;
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const cu = j && j.getCurrentUser && j.getCurrentUser();
+        const proto = cu && cu.constructor && cu.constructor.prototype;
+        if (proto && typeof proto.getAvatarDecorationURL === "function")
+          E.push(
+            y.after("getAvatarDecorationURL", proto, function (a, ret) {
+              try {
+                const id = this && this.id;
+                if (id && (e.storage.profiles || EMPTY)[id]) return null;
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const UPS = l.findByStoreName("UserProfileStore");
+        if (UPS && typeof UPS.getUserProfile === "function")
+          E.push(
+            y.after("getUserProfile", UPS, function (a, ret) {
+              try {
+                const profs = e.storage.profiles;
+                const id = a && a[0];
+                if (profs && id && profs[id] && ret) {
+                  const prof = profs[id];
+                  forceNull(ret, "avatarDecoration");
+                  forceNull(ret, "avatarDecorationData");
+                  forceNull(ret, "profileEffectId");
+                  forceNull(ret, "primaryGuild");
+                  forceNull(ret, "clan");
+                  forceSet(ret, "badges", []);
+                  forceSet(ret, "premiumType", 0);
+                  forceNull(ret, "premiumSince");
+                  forceNull(ret, "premiumGuildSince");
+                  if (prof.sourceId && !resolving.has("p" + id)) {
+                    resolving.add("p" + id);
+                    try {
+                      const sp = UPS.getUserProfile(prof.sourceId);
+                      if (sp) {
+                        if (sp.bio != null) forceSet(ret, "bio", sp.bio);
+                        if (sp.pronouns != null)
+                          forceSet(ret, "pronouns", sp.pronouns);
+                        if (sp.accentColor != null)
+                          forceSet(ret, "accentColor", sp.accentColor);
+                        if (sp.themeColors != null)
+                          forceSet(ret, "themeColors", sp.themeColors);
+                      }
+                      let sbh = null;
+                      try {
+                        const src2 = j.getUser(prof.sourceId);
+                        sbh = (src2 && src2.banner) || (sp && sp.banner) || null;
+                      } catch {}
+                      forceSet(ret, "banner", sbh);
+                    } catch {
+                    } finally {
+                      resolving.delete("p" + id);
+                    }
+                  }
+                }
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const BG = l.findByProps("getBadges");
+        if (BG && typeof BG.getBadges === "function")
+          E.push(
+            y.after("getBadges", BG, function (a, ret) {
+              try {
+                const id = firstProfiledId(a);
+                if (id) return [];
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const BG2 = l.findByProps("getUserProfileBadges");
+        if (BG2 && typeof BG2.getUserProfileBadges === "function")
+          E.push(
+            y.after("getUserProfileBadges", BG2, function (a, ret) {
+              try {
+                const id = firstProfiledId(a);
+                if (id) return [];
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        if (j && typeof j.getCurrentUser === "function")
+          E.push(
+            y.after("getCurrentUser", j, function (a, ret) {
+              try {
+                if (selfActive && selfId && ret) return spoofCU(ret, selfId);
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const ICU = l.findByProps("isCurrentUser");
+        if (ICU && typeof ICU.isCurrentUser === "function")
+          E.push(
+            y.after("isCurrentUser", ICU, function (a, ret) {
+              try {
+                const profs = e.storage.profiles;
+                const id = extractId(a && a[0]) || (a && a[0]);
+                if (profs && id && profs[id] && profs[id].self) return !0;
+              } catch {}
+              return ret;
+            }),
+          );
+        const IM = l.findByProps("isMe");
+        if (IM && typeof IM.isMe === "function")
+          E.push(
+            y.after("isMe", IM, function (a, ret) {
+              try {
+                const profs = e.storage.profiles;
+                const id = extractId(a && a[0]) || (a && a[0]);
+                if (profs && id && profs[id] && profs[id].self) return !0;
+              } catch {}
+              return ret;
+            }),
+          );
+      } catch {}
+      try {
+        const hasP = function (fn) {
+          try {
+            const o = l.findByProps(fn);
+            return !!(o && typeof o[fn] === "function");
+          } catch {
+            return !1;
           }
-          if (!foundId) {
+        };
+        let protoHas = !1;
+        try {
+          const cu0 = j && j.getCurrentUser && j.getCurrentUser();
+          protoHas = !!(
+            cu0 &&
+            cu0.constructor &&
+            cu0.constructor.prototype &&
+            typeof cu0.constructor.prototype.getAvatarURL === "function"
+          );
+        } catch {}
+        let gms0 = null;
+        try {
+          gms0 = l.findByStoreName("GuildMemberStore");
+        } catch {}
+        let ups0 = !1;
+        try {
+          const u0 = l.findByStoreName("UserProfileStore");
+          ups0 = !!(u0 && typeof u0.getUserProfile === "function");
+        } catch {}
+        let protoBan = !1,
+          protoDec = !1;
+        try {
+          const cu1 = j && j.getCurrentUser && j.getCurrentUser();
+          const pr1 = cu1 && cu1.constructor && cu1.constructor.prototype;
+          protoBan = !!(pr1 && typeof pr1.getBannerURL === "function");
+          protoDec = !!(
+            pr1 && typeof pr1.getAvatarDecorationURL === "function"
+          );
+        } catch {}
+        patchInfo =
+          "avURL:" +
+          (hasP("getUserAvatarURL") ? "Y" : "N") +
+          " avSrc:" +
+          (hasP("getUserAvatarSource") ? "Y" : "N") +
+          " guildAv:" +
+          (hasP("getGuildMemberAvatarURLSimple") ? "Y" : "N") +
+          " recAv:" +
+          (protoHas ? "Y" : "N") +
+          " getName:" +
+          (hasP("getName") ? "Y" : "N") +
+          " getNick:" +
+          (gms0 && typeof gms0.getNick === "function" ? "Y" : "N") +
+          " getMember:" +
+          (gms0 && typeof gms0.getMember === "function" ? "Y" : "N") +
+          " getMembers:" +
+          (gms0 && typeof gms0.getMembers === "function" ? "Y" : "N") +
+          " getNickname:" +
+          (function () {
             try {
-              for (const key in opts) {
-                const val = opts[key];
-                if (typeof val === "string" && profiles[val]?.self) { foundId = val; break; }
-                if (val && typeof val === "object") {
-                  const sub = val.id || val.userId;
-                  if (sub && profiles[sub]?.self) { foundId = sub; break; }
+              const k0 = l.findByProps("getNickname");
+              return k0 && typeof k0.getNickname === "function" ? "Y" : "N";
+            } catch {
+              return "N";
+            }
+          })() +
+          " banURL:" +
+          (hasP("getUserBannerURL") ? "Y" : "N") +
+          " recBan:" +
+          (protoBan ? "Y" : "N") +
+          " decURL:" +
+          (hasP("getAvatarDecorationURL") ? "Y" : "N") +
+          " recDec:" +
+          (protoDec ? "Y" : "N") +
+          " profile:" +
+          (ups0 ? "Y" : "N") +
+          " fetchP:" +
+          (function () {
+            try {
+              const f0 = l.findByProps("fetchProfile");
+              return f0 && typeof f0.fetchProfile === "function" ? "Y" : "N";
+            } catch {
+              return "N";
+            }
+          })() +
+          " isCurUser:" +
+          (hasP("isCurrentUser") ? "Y" : "N") +
+          " isMe:" +
+          (hasP("isMe") ? "Y" : "N");
+      } catch {
+        patchInfo = "(diagnostic failed)";
+      }
+      try {
+        const s = l.findByProps("openUserContextMenu");
+        s?.openUserContextMenu &&
+          (D = y.after("openUserContextMenu", s, function (c) {
+            const u = c[0]?.userId || c[0]?.user?.id;
+            u && (e.storage.userId = u);
+          }));
+      } catch {}
+      try {
+        T = n.FluxDispatcher.subscribe("CHANNEL_SELECT", function (s) {
+          const c = s?.channelId;
+          c &&
+            setTimeout(function () {
+              return H(c);
+            }, 500);
+        });
+      } catch {}
+      const r = Y();
+      (r &&
+        setTimeout(function () {
+          return H(r);
+        }, 1e3),
+        (function () {
+          try {
+            if (_ && typeof _.hideActionSheet === "function")
+              E.push(
+                y.after("hideActionSheet", _, function () {
+                  try {
+                    if (selfActive && Date.now() - selfAt > 400)
+                      ((selfActive = !1), (selfId = null));
+                  } catch {}
+                }),
+              );
+          } catch {}
+        })(),
+        E.push(
+          y.before("openLazy", _, function ([s, c, u]) {
+            try {
+              const profs = e.storage.profiles;
+              if (profs && u) {
+                let fid = null;
+                const cands = [
+                  u.userId,
+                  u.user && u.user.id,
+                  u.user && u.user.userId,
+                ];
+                for (let ci = 0; ci < cands.length; ci++) {
+                  const cv = cands[ci];
+                  if (cv && profs[cv] && profs[cv].self) {
+                    fid = cv;
+                    break;
+                  }
+                }
+                if (!fid)
+                  try {
+                    for (const key in u) {
+                      const val = u[key];
+                      if (
+                        typeof val === "string" &&
+                        profs[val] &&
+                        profs[val].self
+                      ) {
+                        fid = val;
+                        break;
+                      }
+                      if (val && typeof val === "object") {
+                        const sub = val.id || val.userId;
+                        if (sub && profs[sub] && profs[sub].self) {
+                          fid = sub;
+                          break;
+                        }
+                      }
+                    }
+                  } catch {}
+                if (fid) {
+                  ((selfId = fid), (selfActive = !0), (selfAt = Date.now()));
+                  setTimeout(function () {
+                    ((selfActive = !1), (selfId = null));
+                  }, 8000);
                 }
               }
             } catch {}
-          }
-          if (foundId) {
-            selfId = foundId;
-            selfActive = true;
-            selfAt = Date.now();
-            setTimeout(() => { selfActive = false; selfId = null; }, 8000);
-          }
-        }
+            const t = u?.message;
+            c !== "MessageLongPressActionSheet" ||
+              !t ||
+              s.then(function (d) {
+                const i = y.after("default", d, function (g, h) {
+                  setTimeout(i, 0);
+                  const M = k.findInReactTree(h, function (m) {
+                    return m?.[0]?.type?.name === "ActionSheetRow";
+                  });
+                  if (!M) return;
+                  const o = j.getCurrentUser(),
+                    a = G.getMessage(t.channel_id, t.id) ?? t;
+                  if (
+                    a.author.id === o.id ||
+                    M.some(function (m) {
+                      return m?.props?.label === "Edit Locally";
+                    })
+                  )
+                    return;
+                  const p = Math.max(
+                      M.findIndex(function (m) {
+                        return m.props.message === n.i18n.Messages.MARK_UNREAD;
+                      }),
+                      0,
+                    ),
+                    C = function () {
+                      ((S = !0),
+                        I.has(a.id) ||
+                          I.set(a.id, JSON.parse(JSON.stringify(a))),
+                        _.hideActionSheet(),
+                        R.startEditMessage(a.channel_id, a.id, a.content));
+                    };
+                  M.splice(
+                    p,
+                    0,
+                    n.React.createElement(w, {
+                      label: "Edit Locally",
+                      icon: n.React.createElement(w.Icon, {
+                        source: B.getAssetIDByName("ic_edit_24px"),
+                      }),
+                      onPress: C,
+                    }),
+                  );
+                  M.splice(
+                    p,
+                    0,
+                    n.React.createElement(w, {
+                      label: "Use as Fake User",
+                      icon: n.React.createElement(w.Icon, {
+                        source: B.getAssetIDByName("ic_members"),
+                      }),
+                      onPress: function () {
+                        try {
+                          e.storage.userId = a.author.id;
+                          _.hideActionSheet();
+                          tt(
+                            "Fake user set: " +
+                              (a.author.username || a.author.id),
+                          );
+                        } catch {}
+                      },
+                    }),
+                  );
+                });
+              });
+          }),
+        ),
+        E.push(
+          y.before("editMessage", R, function (s) {
+            const [c, u, t] = s;
+            if (S) {
+              const d = I.get(u);
+              if (!d) return;
+              const i = e.storage.savedMessages || [],
+                g = i.find(function (h) {
+                  return h.id === u;
+                });
+              return (
+                g && ((g.content = t.content), L(i)),
+                n.FluxDispatcher.dispatch({
+                  type: "MESSAGE_UPDATE",
+                  message: { ...d, content: t.content, edited_timestamp: null },
+                  otherPluginBypass: !0,
+                }),
+                []
+              );
+            }
+          }),
+        ),
+        E.push(
+          y.after("endEditMessage", R, function () {
+            S && (S = !1);
+          }),
+        ));
+      try {
+        prefetchSources();
       } catch {}
-
-      const message = opts?.message;
-      if (name !== "MessageLongPressActionSheet" || !message) return;
-
-      promise.then((module) => {
-        const unpatch = patcher.after("default", module, (args, tree) => {
-          setTimeout(unpatch, 0);
-          const rows = utils.findInReactTree(tree, (node) => node?.[0]?.type?.name === "ActionSheetRow");
-          if (!rows) return;
-
-          const currentUser = UserStoreByName.getCurrentUser();
-          const msg = MessageStore.getMessage(message.channel_id, message.id) ?? message;
-
-          if (msg.author.id === currentUser.id) return;
-          if (rows.some((row) => row?.props?.label === "Edit Locally")) return;
-
-          const insertIdx = Math.max(
-            rows.findIndex((row) => row.props.message === common.i18n.Messages.MARK_UNREAD),
-            0,
-          );
-
-          const editLocally = () => {
-            isLocalEditing = true;
-            if (!originalMessages.has(msg.id))
-              originalMessages.set(msg.id, JSON.parse(JSON.stringify(msg)));
-            ActionSheetModule.hideActionSheet();
-            MessageActions.startEditMessage(msg.channel_id, msg.id, msg.content);
-          };
-
-          rows.splice(insertIdx, 0,
-            common.React.createElement(ActionSheetRow, {
-              label: "Edit Locally",
-              icon: common.React.createElement(ActionSheetRow.Icon, {
-                source: assets.getAssetIDByName("ic_edit_24px"),
-              }),
-              onPress: editLocally,
-            }),
-          );
-
-          rows.splice(insertIdx, 0,
-            common.React.createElement(ActionSheetRow, {
-              label: "Use as Fake User",
-              icon: common.React.createElement(ActionSheetRow.Icon, {
-                source: assets.getAssetIDByName("ic_members"),
-              }),
-              onPress: () => {
+    },
+    onUnload() {
+      try {
+        K.forEach(function (fn) {
+          try {
+            fn();
+          } catch {}
+        });
+      } catch {}
+      K = [];
+      (D && (D(), (D = null)),
+        T && (n.FluxDispatcher.unsubscribe("CHANNEL_SELECT", T), (T = null)),
+        b && (b(), (b = null)),
+        E.forEach(function (r) {
+          return r();
+        }),
+        (E = []),
+        I.clear());
+    },
+    settings: function (props) {
+      const [tick, setTick] = n.React.useState(0);
+      let nav = null;
+      try {
+        if (NV && NV.useNavigation) nav = NV.useNavigation();
+      } catch {}
+      const r = e.storage.userId || "",
+        s = e.storage.message || "",
+        c = r ? F.getUser(r) : null,
+        u = (e.storage.savedMessages || []).length,
+        pid = e.storage.profileId || "",
+        pname = e.storage.profileName || "",
+        pavatar = e.storage.profileAvatar || "",
+        psource = e.storage.profileSource || "",
+        pjoined = e.storage.profileJoined || "",
+        paccount = e.storage.profileAccount || "",
+        psel = e.storage.profileSelf || !1,
+        profs = e.storage.profiles || {},
+        profKeys = Object.keys(profs),
+        t = nowDate(),
+        d = e.storage.customYear || t.getFullYear(),
+        i = e.storage.customMonth || t.getMonth() + 1,
+        g = e.storage.customDay || t.getDate(),
+        h =
+          e.storage.customHour !== void 0 ? e.storage.customHour : t.getHours(),
+        M =
+          e.storage.customMinute !== void 0
+            ? e.storage.customMinute
+            : t.getMinutes();
+      return n.React.createElement(
+        props && props.inSheet ? n.React.Fragment : v.Forms.Form,
+        {},
+        n.React.createElement(A, {
+          label: "Close Panel",
+          leading: A.Icon
+            ? n.React.createElement(A.Icon, {
+                source: B.getAssetIDByName("ic_close"),
+              })
+            : void 0,
+          onPress: function () {
+            if (props && props.inSheet) {
+              try {
+                _.hideActionSheet();
+              } catch {}
+            } else {
+              closePanel(nav);
+            }
+          },
+        }),
+        n.React.createElement(
+          N,
+          { title: "Fake Message" },
+          n.React.createElement(f, {
+            key: "uid" + tick,
+            title: "User ID (Optional)",
+            placeholder: "Leave empty to use current user",
+            value: r,
+            onChange: function (o) {
+              e.storage.userId = o || "";
+            },
+            helperText: c
+              ? `User: ${c.username} - use "them" in the builder`
+              : r
+                ? 'User not found (still usable as "them")'
+                : "Will use your account",
+          }),
+          n.React.createElement(A, {
+            label: "Fill from current chat",
+            subLabel:
+              "Grab the other person in this DM (or the last sender in this channel).",
+            leading: A.Icon
+              ? n.React.createElement(A.Icon, {
+                  source: B.getAssetIDByName("ic_members"),
+                })
+              : void 0,
+            onPress: function () {
+              const id = fillFromChat();
+              if (id) {
+                e.storage.userId = id;
+                setTick(function (kk) {
+                  return kk + 1;
+                });
+                tt("Filled User ID: " + id);
+              } else
+                tt(
+                  'Couldn\'t find a user here. Open a DM, or long-press a message and pick "Use as Fake User".',
+                );
+            },
+          }),
+          n.React.createElement(f, {
+            title: "Message",
+            placeholder: "Enter message content",
+            value: s,
+            onChange: function (o) {
+              e.storage.message = o || "";
+            },
+            multiline: !0,
+          }),
+          n.React.createElement(f, {
+            title: "Server ID for [server] tag (optional)",
+            placeholder: "Paste a server ID; [server] becomes its name",
+            value: e.storage.serverTagId || "",
+            onChange: function (o) {
+              e.storage.serverTagId = o || "";
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          n.React.createElement(A, {
+            label:
+              "[server] = " +
+              (resolveServerName(null, Y()) ||
+                "(no match - join that server or recheck the ID)"),
+            subLabel:
+              "Type [server] in your message and it's swapped for the name when sent. Use [server:123] to name a specific server inline.",
+          }),
+          n.React.createElement(A, {
+            label: "Use the server I'm in now",
+            subLabel: "One tap - fills the box above with your current server.",
+            onPress: function () {
+              const ch = O && O.getChannel && O.getChannel(Y());
+              const gid = ch && ch.guild_id;
+              if (!gid) {
+                tt("You're not in a server right now - open a server channel first.");
+                return;
+              }
+              e.storage.serverTagId = gid;
+              const g = Q && Q.getGuild && Q.getGuild(gid);
+              tt('Set to "' + ((g && g.name) || gid) + '".');
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          n.React.createElement(A, {
+            label: e.storage.serverPickerOpen
+              ? "Hide server list"
+              : "Pick from my servers",
+            subLabel: "Choose a server by name - no ID needed.",
+            onPress: function () {
+              e.storage.serverPickerOpen = !e.storage.serverPickerOpen;
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          e.storage.serverPickerOpen
+            ? (function () {
+                let guilds = [];
                 try {
-                  plugin.storage.userId = msg.author.id;
-                  ActionSheetModule.hideActionSheet();
-                  showToast("Fake user set: " + (msg.author.username || msg.author.id));
+                  const all = (Q && Q.getGuilds && Q.getGuilds()) || {};
+                  guilds = Object.keys(all)
+                    .map(function (k) {
+                      return all[k];
+                    })
+                    .filter(function (g) {
+                      return g && g.name;
+                    });
+                  guilds.sort(function (a, b) {
+                    return ("" + a.name).localeCompare("" + b.name);
+                  });
                 } catch {}
+                const sq = ("" + (e.storage.serverSearch || ""))
+                  .trim()
+                  .toLowerCase();
+                if (sq)
+                  guilds = guilds.filter(function (g) {
+                    return ("" + g.name).toLowerCase().indexOf(sq) !== -1;
+                  });
+                const total = guilds.length,
+                  shown = guilds.slice(0, 30),
+                  rows = [
+                    n.React.createElement(f, {
+                      key: "ssearch",
+                      title: "Search servers",
+                      placeholder: "Type a server name",
+                      value: e.storage.serverSearch || "",
+                      onChange: function (o) {
+                        e.storage.serverSearch = o || "";
+                        setTick(function (kk) {
+                          return kk + 1;
+                        });
+                      },
+                    }),
+                  ];
+                if (!shown.length)
+                  rows.push(
+                    n.React.createElement(A, {
+                      key: "snone",
+                      label: sq ? "(no servers match)" : "(no servers found)",
+                    }),
+                  );
+                shown.forEach(function (g) {
+                  rows.push(
+                    n.React.createElement(A, {
+                      key: "g" + g.id,
+                      label: g.name,
+                      onPress: function () {
+                        e.storage.serverTagId = g.id;
+                        e.storage.serverPickerOpen = !1;
+                        e.storage.serverSearch = "";
+                        tt('Set to "' + g.name + '".');
+                        setTick(function (kk) {
+                          return kk + 1;
+                        });
+                      },
+                    }),
+                  );
+                });
+                if (total > shown.length)
+                  rows.push(
+                    n.React.createElement(A, {
+                      key: "smore",
+                      label:
+                        total - shown.length + " more - keep typing to narrow",
+                      subLabel: "Showing the first 30 matches.",
+                    }),
+                  );
+                return rows;
+              })()
+            : null,
+          n.React.createElement(A, {
+            label: "Link Previews",
+            subLabel:
+              "Show embeds for links in fake messages (YouTube, websites, images).",
+            trailing: n.React.createElement(v.Forms.FormSwitch, {
+              value: e.storage.embedsEnabled !== !1,
+              onValueChange: function (o) {
+                e.storage.embedsEnabled = o;
               },
             }),
-          );
-        });
-      });
-    }));
-  }
-
-  // ─── Patch Diagnostics ──────────────────────────────────────────────────────
-
-  function buildPatchInfo() {
-    try {
-      const hasModule = (fn) => {
-        try { const o = metro.findByProps(fn); return !!(o && typeof o[fn] === "function"); } catch { return false; }
-      };
-
-      let protoHasAvatar = false;
-      try {
-        const cu = UserStoreByName?.getCurrentUser?.();
-        protoHasAvatar = !!(cu?.constructor?.prototype?.getAvatarURL);
-      } catch {}
-
-      let gms = null;
-      try { gms = metro.findByStoreName("GuildMemberStore"); } catch {}
-
-      let hasUserProfile = false;
-      try { const ups = metro.findByStoreName("UserProfileStore"); hasUserProfile = !!(ups?.getUserProfile); } catch {}
-
-      let protoBanner = false, protoDeco = false;
-      try {
-        const cu = UserStoreByName?.getCurrentUser?.();
-        const proto = cu?.constructor?.prototype;
-        protoBanner = !!(proto?.getBannerURL);
-        protoDeco = !!(proto?.getAvatarDecorationURL);
-      } catch {}
-
-      patchInfo = [
-        "avURL:" + (hasModule("getUserAvatarURL") ? "Y" : "N"),
-        "avSrc:" + (hasModule("getUserAvatarSource") ? "Y" : "N"),
-        "guildAv:" + (hasModule("getGuildMemberAvatarURLSimple") ? "Y" : "N"),
-        "recAv:" + (protoHasAvatar ? "Y" : "N"),
-        "getName:" + (hasModule("getName") ? "Y" : "N"),
-        "getNick:" + (gms && typeof gms.getNick === "function" ? "Y" : "N"),
-        "getMember:" + (gms && typeof gms.getMember === "function" ? "Y" : "N"),
-        "getMembers:" + (gms && typeof gms.getMembers === "function" ? "Y" : "N"),
-        "getNickname:" + (hasModule("getNickname") ? "Y" : "N"),
-        "banURL:" + (hasModule("getUserBannerURL") ? "Y" : "N"),
-        "recBan:" + (protoBanner ? "Y" : "N"),
-        "decURL:" + (hasModule("getAvatarDecorationURL") ? "Y" : "N"),
-        "recDec:" + (protoDeco ? "Y" : "N"),
-        "profile:" + (hasUserProfile ? "Y" : "N"),
-        "fetchP:" + (hasModule("fetchProfile") ? "Y" : "N"),
-        "isCurUser:" + (hasModule("isCurrentUser") ? "Y" : "N"),
-        "isMe:" + (hasModule("isMe") ? "Y" : "N"),
-      ].join(" ");
-    } catch {
-      patchInfo = "(diagnostic failed)";
-    }
-  }
-
-  // ─── Settings UI Components ─────────────────────────────────────────────────
-
-  function FakeMessageSection({ tick, setTick }) {
-    const userId = plugin.storage.userId || "";
-    const message = plugin.storage.message || "";
-    const resolvedUser = userId ? UserStore.getUser(userId) : null;
-    const savedCount = (plugin.storage.savedMessages || []).length;
-    const now = nowDate();
-    const year = plugin.storage.customYear || now.getFullYear();
-    const month = plugin.storage.customMonth || now.getMonth() + 1;
-    const day = plugin.storage.customDay || now.getDate();
-    const hour = plugin.storage.customHour !== undefined ? plugin.storage.customHour : now.getHours();
-    const minute = plugin.storage.customMinute !== undefined ? plugin.storage.customMinute : now.getMinutes();
-
-    return common.React.createElement(FormSection, { title: "Fake Message" },
-      common.React.createElement(FormInput, {
-        key: "uid" + tick,
-        title: "User ID (Optional)",
-        placeholder: "Leave empty to use current user",
-        value: userId,
-        onChange: (v) => { plugin.storage.userId = v || ""; },
-        helperText: resolvedUser
-          ? `User: ${resolvedUser.username} - use "them" in the builder`
-          : userId ? 'User not found (still usable as "them")' : "Will use your account",
-      }),
-      common.React.createElement(FormRow, {
-        label: "Fill from current chat",
-        subLabel: "Grab the other person in this DM (or the last sender in this channel).",
-        leading: FormRow.Icon
-          ? common.React.createElement(FormRow.Icon, { source: assets.getAssetIDByName("ic_members") })
-          : undefined,
-        onPress: () => {
-          const id = fillFromChat();
-          if (id) {
-            plugin.storage.userId = id;
-            setTick((k) => k + 1);
-            showToast("Filled User ID: " + id);
-          } else {
-            showToast('Couldn\'t find a user here. Open a DM, or long-press a message and pick "Use as Fake User".');
-          }
-        },
-      }),
-      common.React.createElement(FormInput, {
-        title: "Message",
-        placeholder: "Enter message content",
-        value: message,
-        onChange: (v) => { plugin.storage.message = v || ""; },
-        multiline: true,
-      }),
-      common.React.createElement(FormInput, {
-        title: "Server ID for [server] tag (optional)",
-        placeholder: "Paste a server ID; [server] becomes its name",
-        value: plugin.storage.serverTagId || "",
-        onChange: (v) => { plugin.storage.serverTagId = v || ""; setTick((k) => k + 1); },
-      }),
-      common.React.createElement(FormRow, {
-        label: "[server] = " + (resolveServerName(null, getCurrentChannelId()) || "(no match - join that server or recheck the ID)"),
-        subLabel: "Type [server] in your message and it's swapped for the name when sent. Use [server:123] to name a specific server inline.",
-      }),
-      common.React.createElement(FormRow, {
-        label: "Use the server I'm in now",
-        subLabel: "One tap - fills the box above with your current server.",
-        onPress: () => {
-          const ch = ChannelModule?.getChannel?.(getCurrentChannelId());
-          const guildId = ch?.guild_id;
-          if (!guildId) { showToast("You're not in a server right now - open a server channel first."); return; }
-          plugin.storage.serverTagId = guildId;
-          const guild = GuildStore?.getGuild?.(guildId);
-          showToast('Set to "' + (guild?.name || guildId) + '".');
-          setTick((k) => k + 1);
-        },
-      }),
-      common.React.createElement(FormRow, {
-        label: plugin.storage.serverPickerOpen ? "Hide server list" : "Pick from my servers",
-        subLabel: "Choose a server by name - no ID needed.",
-        onPress: () => { plugin.storage.serverPickerOpen = !plugin.storage.serverPickerOpen; setTick((k) => k + 1); },
-      }),
-      plugin.storage.serverPickerOpen ? renderServerPicker(setTick) : null,
-      common.React.createElement(FormRow, {
-        label: "Link Previews",
-        subLabel: "Show embeds for links in fake messages (YouTube, websites, images).",
-        trailing: common.React.createElement(FormSwitch, {
-          value: plugin.storage.embedsEnabled !== false,
-          onValueChange: (v) => { plugin.storage.embedsEnabled = v; },
-        }),
-      }),
-    );
-  }
-
-  function renderServerPicker(setTick) {
-    let guilds = [];
-    try {
-      const all = GuildStore?.getGuilds?.() || {};
-      guilds = Object.values(all).filter((g) => g && g.name);
-      guilds.sort((a, b) => ("" + a.name).localeCompare("" + b.name));
-    } catch {}
-
-    const query = ("" + (plugin.storage.serverSearch || "")).trim().toLowerCase();
-    if (query) guilds = guilds.filter((g) => ("" + g.name).toLowerCase().includes(query));
-
-    const total = guilds.length;
-    const shown = guilds.slice(0, 30);
-    const rows = [
-      common.React.createElement(FormInput, {
-        key: "ssearch",
-        title: "Search servers",
-        placeholder: "Type a server name",
-        value: plugin.storage.serverSearch || "",
-        onChange: (v) => { plugin.storage.serverSearch = v || ""; setTick((k) => k + 1); },
-      }),
-    ];
-
-    if (!shown.length) {
-      rows.push(common.React.createElement(FormRow, {
-        key: "snone", label: query ? "(no servers match)" : "(no servers found)",
-      }));
-    }
-
-    for (const guild of shown) {
-      rows.push(common.React.createElement(FormRow, {
-        key: "g" + guild.id,
-        label: guild.name,
-        onPress: () => {
-          plugin.storage.serverTagId = guild.id;
-          plugin.storage.serverPickerOpen = false;
-          plugin.storage.serverSearch = "";
-          showToast('Set to "' + guild.name + '".');
-          setTick((k) => k + 1);
-        },
-      }));
-    }
-
-    if (total > shown.length) {
-      rows.push(common.React.createElement(FormRow, {
-        key: "smore",
-        label: (total - shown.length) + " more - keep typing to narrow",
-        subLabel: "Showing the first 30 matches.",
-      }));
-    }
-
-    return rows;
-  }
-
-  function TimestampSection({ setTick }) {
-    const now = nowDate();
-    const year = plugin.storage.customYear || now.getFullYear();
-    const month = plugin.storage.customMonth || now.getMonth() + 1;
-    const day = plugin.storage.customDay || now.getDate();
-    const hour = plugin.storage.customHour !== undefined ? plugin.storage.customHour : now.getHours();
-    const minute = plugin.storage.customMinute !== undefined ? plugin.storage.customMinute : now.getMinutes();
-    const savedCount = (plugin.storage.savedMessages || []).length;
-
-    return common.React.createElement(FormSection, { title: "Custom Timestamp" },
-      common.React.createElement(FormRow, {
-        label: "UK time (GMT/BST)" + (isUkTimeEnabled() ? " - ON" : " - off"),
-        subLabel: "Automatic timestamps use UK time, and times you enter are treated as UK. Handles BST/GMT automatically.",
-        trailing: common.React.createElement(FormSwitch, {
-          value: isUkTimeEnabled(),
-          onValueChange: (v) => { plugin.storage.ukTime = v; setTick((k) => k + 1); },
-        }),
-      }),
-      common.React.createElement(FormRow, {
-        label: isUkTimeEnabled()
-          ? "UTC mode (ignored while UK is on)"
-          : plugin.storage.useUTC ? "Using UTC Time" : "Using Local Time",
-        subLabel: isUkTimeEnabled()
-          ? "Turn off UK time above to use this."
-          : plugin.storage.useUTC ? "Time will be the same for everyone" : "Time will adjust to viewer's timezone",
-        trailing: common.React.createElement(FormSwitch, {
-          value: plugin.storage.useUTC || false,
-          onValueChange: (v) => { plugin.storage.useUTC = v; setTick((k) => k + 1); },
-        }),
-      }),
-      common.React.createElement(FormInput, {
-        title: "Year", placeholder: "YYYY (e.g., 2024)", value: String(year),
-        onChange: (v) => { const a = parseInt(v); plugin.storage.customYear = isNaN(a) ? now.getFullYear() : a; },
-        keyboardType: "number-pad",
-      }),
-      common.React.createElement(FormInput, {
-        title: "Month", placeholder: "1-12", value: String(month),
-        onChange: (v) => { const a = parseInt(v); plugin.storage.customMonth = isNaN(a) ? now.getMonth() + 1 : Math.min(Math.max(a, 1), 12); },
-        keyboardType: "number-pad",
-      }),
-      common.React.createElement(FormInput, {
-        title: "Day", placeholder: "1-31", value: String(day),
-        onChange: (v) => { const a = parseInt(v); plugin.storage.customDay = isNaN(a) ? now.getDate() : Math.min(Math.max(a, 1), 31); },
-        keyboardType: "number-pad",
-      }),
-      common.React.createElement(FormInput, {
-        title: "Hour", placeholder: "0-23", value: String(hour),
-        onChange: (v) => { const a = parseInt(v); plugin.storage.customHour = isNaN(a) ? now.getHours() : Math.min(Math.max(a, 0), 23); },
-        keyboardType: "number-pad",
-      }),
-      common.React.createElement(FormInput, {
-        title: "Minute", placeholder: "0-59", value: String(minute),
-        onChange: (v) => { const a = parseInt(v); plugin.storage.customMinute = isNaN(a) ? now.getMinutes() : Math.min(Math.max(a, 0), 59); },
-        keyboardType: "number-pad",
-      }),
-      common.React.createElement(FormRow, {
-        label: "Send Fake Message",
-        subLabel: `${savedCount} messages saved | Timestamp: ${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
-        onPress: async () => {
-          const channelId = getCurrentChannelId();
-          const content = (plugin.storage.message || "").trim();
-          if (!content || !channelId) return;
-
-          const uid = (plugin.storage.userId || "").trim() || UserStore.getCurrentUser()?.id;
-          if (!uid) return;
-
-          const useUTC = plugin.storage.useUTC && !isUkTimeEnabled();
-          const timestamp = (useUTC
-            ? new Date(Date.UTC(
-                plugin.storage.customYear || now.getFullYear(),
-                (plugin.storage.customMonth || now.getMonth() + 1) - 1,
-                plugin.storage.customDay || now.getDate(),
-                plugin.storage.customHour !== undefined ? plugin.storage.customHour : now.getHours(),
-                plugin.storage.customMinute !== undefined ? plugin.storage.customMinute : now.getMinutes(), 0, 0))
-            : new Date(
-                plugin.storage.customYear || now.getFullYear(),
-                (plugin.storage.customMonth || now.getMonth() + 1) - 1,
-                plugin.storage.customDay || now.getDate(),
-                plugin.storage.customHour !== undefined ? plugin.storage.customHour : now.getHours(),
-                plugin.storage.customMinute !== undefined ? plugin.storage.customMinute : now.getMinutes(), 0, 0)
-          ).toISOString();
-
-          const id = genId(timestamp);
-          await createFakeMessage(channelId, uid, content, timestamp, id);
-          saveMessage(channelId, uid, content, id, timestamp);
-          showToast("Fake message sent.");
-        },
-      }),
-    );
-  }
-
-  function ConversationSection({ tick, setTick }) {
-    return common.React.createElement(FormSection, { title: "Conversation Builder" },
-      common.React.createElement(FormInput, {
-        title: "Conversation",
-        placeholder: "One line each:\nuserId [time] [^reply] - message\n\nme = you  |  them = the User ID above\n^N = reply to line N  |  ^ = reply to previous\n\nExample:\nme [9pm] - hey\nthem [9:01pm] ^1 - hi back\nme ^ - lol",
-        value: plugin.storage.conversationText || "",
-        onChange: (v) => { plugin.storage.conversationText = v || ""; },
-        multiline: true,
-      }),
-      common.React.createElement(FormRow, {
-        label: "Build Conversation",
-        subLabel: "Format: userId [time] [^reply] - message. 'me' = you, 'them' = the User ID above. Reply with ^N (the Nth message) or ^ (previous message). Time optional (9pm, 21:00, 2024-12-25 14:30); untimed lines are spaced 1 min apart. Honors the UTC toggle.",
-        onPress: async () => { await runConversation(); },
-      }),
-      common.React.createElement(FormInput, {
-        title: "Save this conversation as (optional)",
-        placeholder: "A name to find it later",
-        value: plugin.storage.convoSaveName || "",
-        onChange: (v) => { plugin.storage.convoSaveName = v || ""; },
-      }),
-      common.React.createElement(FormRow, {
-        label: "Save conversation",
-        subLabel: "Keeps the text above on this device so you can reload it later. Stays local - nothing leaves your device.",
-        onPress: () => {
-          const txt = plugin.storage.conversationText || "";
-          if (!txt.trim()) { showToast("Nothing to save - the conversation box is empty."); return; }
-          const arr = (plugin.storage.savedConvos || []).slice();
-          const name = ("" + (plugin.storage.convoSaveName || "")).trim() || "Saved " + (arr.length + 1);
-          arr.push({ name, text: txt });
-          plugin.storage.savedConvos = arr;
-          plugin.storage.convoSaveName = "";
-          showToast('Saved "' + name + '".');
-          setTick((k) => k + 1);
-        },
-      }),
-      (plugin.storage.savedConvos || []).length
-        ? common.React.createElement(FormRow, {
-            label: "Clear saved conversations",
-            subLabel: (plugin.storage.savedConvos || []).length + " saved. Removes them all.",
-            onPress: () => { plugin.storage.savedConvos = []; showToast("Cleared saved conversations."); setTick((k) => k + 1); },
-          })
-        : null,
-      ...(plugin.storage.savedConvos || []).map((sc, idx) =>
-        common.React.createElement(FormRow, {
-          key: "sc" + idx,
-          label: sc.name,
-          subLabel: "Tap to load this into the builder.",
-          onPress: () => { plugin.storage.conversationText = sc.text || ""; showToast('Loaded "' + sc.name + '".'); setTick((k) => k + 1); },
-        })
-      ),
-    );
-  }
-
-  function ProfileSection({ tick, setTick }) {
-    const profileId = plugin.storage.profileId || "";
-    const profiles = plugin.storage.profiles || {};
-    const profileKeys = Object.keys(profiles);
-
-    return common.React.createElement(FormSection, { title: "Fake Profiles" },
-      common.React.createElement(FormRow, {
-        label: "Override a user ID's display name and avatar across the app (chat, profiles, server member lists). Either set a name/avatar, or mirror another user's profile.",
-      }),
-      common.React.createElement(FormRow, {
-        label: "Patch status (for debugging)",
-        subLabel: patchInfo,
-      }),
-      common.React.createElement(FormInput, {
-        title: "User ID", placeholder: "User ID to customize", value: profileId,
-        onChange: (v) => { plugin.storage.profileId = (v || "").replace(/[^0-9]/g, ""); },
-        keyboardType: "number-pad",
-      }),
-      common.React.createElement(FormInput, {
-        title: "Display Name", placeholder: "Name to show (optional)", value: plugin.storage.profileName || "",
-        onChange: (v) => { plugin.storage.profileName = v || ""; },
-      }),
-      common.React.createElement(FormInput, {
-        title: "Avatar URL", placeholder: "https://... image link (optional)", value: plugin.storage.profileAvatar || "",
-        onChange: (v) => { plugin.storage.profileAvatar = v || ""; },
-      }),
-      common.React.createElement(FormInput, {
-        title: "Copy From User ID", placeholder: "Mirror this user's name + pfp (optional)", value: plugin.storage.profileSource || "",
-        onChange: (v) => { plugin.storage.profileSource = (v || "").replace(/[^0-9]/g, ""); },
-        keyboardType: "number-pad",
-      }),
-      common.React.createElement(FormInput, {
-        title: "Server Member Since date (optional)", placeholder: "e.g. 4/3/26  (blank = your account date)", value: plugin.storage.profileJoined || "",
-        onChange: (v) => { plugin.storage.profileJoined = v || ""; },
-      }),
-      common.React.createElement(FormInput, {
-        title: "Discord account created date (optional)", placeholder: "e.g. 4/3/26  (blank = copies your account)", value: plugin.storage.profileAccount || "",
-        onChange: (v) => { plugin.storage.profileAccount = v || ""; },
-      }),
-      common.React.createElement(FormRow, {
-        label: "Render as my own profile (experimental)",
-        subLabel: "Makes opening this user's profile show the self-profile layout (Edit Profile button). May break that profile screen; turn off if it crashes.",
-        trailing: common.React.createElement(FormSwitch, {
-          value: plugin.storage.profileSelf === true,
-          onValueChange: (v) => { plugin.storage.profileSelf = v; },
-        }),
-      }),
-      common.React.createElement(FormRow, {
-        label: "Save Profile",
-        onPress: () => { saveProfile(); setTick((k) => k + 1); },
-      }),
-      common.React.createElement(FormRow, {
-        label: "Cache my profile now (for banner/bio)",
-        subLabel: "Fetches every source profile so banner, bio, pronouns and accent are available to copy.",
-        leading: FormRow.Icon ? common.React.createElement(FormRow.Icon, { source: assets.getAssetIDByName("ic_download_24px") }) : undefined,
-        onPress: () => {
-          try {
-            const count = prefetchSources();
-            showToast(count
-              ? "Fetching " + count + " source profile(s). Reopen the target in a moment."
-              : "No mirror sources set. Add a Copy From User ID first.");
-          } catch { showToast("Couldn't trigger a profile fetch on this build."); }
-        },
-      }),
-      common.React.createElement(FormRow, {
-        label: "Remove This Profile",
-        subLabel: "Deletes the profile for the User ID above.",
-        leading: FormRow.Icon ? common.React.createElement(FormRow.Icon, { source: assets.getAssetIDByName("ic_trash_24px") }) : undefined,
-        onPress: () => { removeProfile(); setTick((k) => k + 1); },
-      }),
-      profileKeys.length
-        ? common.React.createElement(FormRow, { label: "Saved profiles (" + profileKeys.length + ") - tap to edit:" })
-        : null,
-      ...profileKeys.map((key) => {
-        const prof = profiles[key] || {};
-        return common.React.createElement(FormRow, {
-          key,
-          label: (prof.name || (prof.sourceId ? "(mirror)" : "(no name)")) + "  -  " + key,
-          subLabel: prof.sourceId ? "Mirrors user " + prof.sourceId : prof.avatar ? "Custom avatar set" : "Name only",
-          onPress: () => {
-            plugin.storage.profileId = key;
-            plugin.storage.profileName = prof.name || "";
-            plugin.storage.profileAvatar = prof.avatar || "";
-            plugin.storage.profileSource = prof.sourceId || "";
-            plugin.storage.profileJoined = prof.joinedAt ? fmtSimple(prof.joinedAt) : "";
-            plugin.storage.profileAccount = prof.accountDate ? fmtSimple(prof.accountDate) : "";
-            plugin.storage.profileSelf = !!prof.self;
-            setTick((k) => k + 1);
-          },
-        });
-      }),
-    );
-  }
-
-  function SavedMessagesSection({ setTick }) {
-    const savedCount = (plugin.storage.savedMessages || []).length;
-
-    return common.React.createElement(FormSection, { title: "Saved Messages" },
-      common.React.createElement(FormRow, {
-        label: "Clear Saved Messages",
-        subLabel: savedCount + " saved. These replay each time you reopen a channel - clearing stops that.",
-        leading: FormRow.Icon ? common.React.createElement(FormRow.Icon, { source: assets.getAssetIDByName("ic_trash_24px") }) : undefined,
-        onPress: () => { clearSavedMessages(); setTick((k) => k + 1); },
-      }),
-      common.React.createElement(FormRow, {
-        label: "Remove All Spoofed Messages",
-        subLabel: "Deletes every spoofed message from view now and clears the saved list.",
-        leading: FormRow.Icon ? common.React.createElement(FormRow.Icon, { source: assets.getAssetIDByName("ic_trash_24px") }) : undefined,
-        onPress: () => { removeAllFakeMessages(); setTick((k) => k + 1); },
-      }),
-    );
-  }
-
-  // ─── Main Plugin Export ─────────────────────────────────────────────────────
-
-  const PluginExport = {
-    onLoad() {
-      try { cleanupCallbacks.forEach((fn) => { try { fn(); } catch {} }); } catch {}
-      cleanupCallbacks = [];
-
-      // ── Load-time diagnostics: report any missing critical modules ──
-      try {
-        const missing = _loadErrors.slice();
-        if (!UserStore) missing.push("UserStore");
-        if (!ChannelModule) missing.push("ChannelModule");
-        if (!ChannelSelection) missing.push("ChannelSelection");
-        if (!UserStoreByName) missing.push("UserStoreByName");
-        if (!FluxDispatcher) missing.push("FluxDispatcher");
-        if (!MessageActions) missing.push("MessageActions");
-        if (!FormRow) missing.push("FormRow");
-        let cmdApi = null;
-        try {
-          if (typeof vendetta !== "undefined" && vendetta?.commands?.registerCommand) cmdApi = vendetta.commands;
-          if (!cmdApi) cmdApi = metro.findByProps("registerCommand");
-        } catch {}
-        if (!cmdApi) missing.push("CommandAPI");
-
-        if (missing.length) {
-          showToast("[Spoofer] Missing: " + missing.join(", "));
-          warn("Missing modules:", missing.join(", "));
-        } else {
-          showToast("[Spoofer] All modules OK");
-        }
-      } catch (err) { warn("diagnostics failed", err); }
-
-      // Register commands AFTER load so Discord's command picker re-scans and shows them.
-      // The picker builds its list at load; commands added during onLoad don't appear until
-      // it refreshes. Re-register a few times over the first seconds to reliably catch it.
-      try { registerCommands(); } catch (err) { warn("registerCommands (immediate) failed", err); }
-      try {
-        [1000, 2500, 5000, 8000].forEach(function (ms) {
-          setTimeout(function () { try { registerCommands(); } catch (e) { warn("registerCommands (retry " + ms + ") failed", e); } }, ms);
-        });
-      } catch {}
-
-      try { patchMessageActions(); } catch (err) { warn("patchMessageActions failed", err); }
-      try { patchAvatars(); } catch (err) { warn("patchAvatars failed", err); }
-      try { patchNames(); } catch (err) { warn("patchNames failed", err); }
-      try { patchBannersAndDecorations(); } catch (err) { warn("patchBannersAndDecorations failed", err); }
-      try { patchUserProfile(); } catch (err) { warn("patchUserProfile failed", err); }
-      try { patchSelfIdentity(); } catch (err) { warn("patchSelfIdentity failed", err); }
-      try { patchActionSheet(); } catch (err) { warn("patchActionSheet failed", err); }
-      try { buildPatchInfo(); } catch (err) { warn("buildPatchInfo failed", err); }
-
-      try {
-        const contextModule = metro.findByProps("openUserContextMenu");
-        if (contextModule?.openUserContextMenu) {
-          contextMenuPatch = patcher.after("openUserContextMenu", contextModule, (args) => {
-            const uid = args[0]?.userId || args[0]?.user?.id;
-            if (uid) plugin.storage.userId = uid;
-          });
-        }
-      } catch {}
-
-      try {
-        if (FluxDispatcher) {
-          channelSelectSub = FluxDispatcher.subscribe("CHANNEL_SELECT", (event) => {
-            const channelId = event?.channelId;
-            if (channelId) setTimeout(() => replayChannel(channelId), 500);
-          });
-        }
-      } catch {}
-
-      const currentChannel = getCurrentChannelId();
-      if (currentChannel) setTimeout(() => replayChannel(currentChannel), 1000);
-
-      try { prefetchSources(); } catch {}
-
-      log("Plugin loaded successfully");
-    },
-
-    onUnload() {
-      try { cleanupCallbacks.forEach((fn) => { try { fn(); } catch {} }); } catch {}
-      cleanupCallbacks = [];
-
-      if (contextMenuPatch) { contextMenuPatch(); contextMenuPatch = null; }
-      if (channelSelectSub) { try { FluxDispatcher?.unsubscribe("CHANNEL_SELECT", channelSelectSub); } catch {} channelSelectSub = null; }
-      if (dispatchGuard) { dispatchGuard(); dispatchGuard = null; }
-
-      patches.forEach((unpatch) => unpatch());
-      patches = [];
-      originalMessages.clear();
-      avatarSourceCache.clear();
-
-      log("Plugin unloaded");
-    },
-
-    settings(props) {
-      const [tick, setTick] = common.React.useState(0);
-      let nav = null;
-      try { if (NavigationModule?.useNavigation) nav = NavigationModule.useNavigation(); } catch {}
-
-      const Container = props?.inSheet ? common.React.Fragment : FormContainer;
-
-      return common.React.createElement(Container, {},
-        common.React.createElement(FormRow, {
-          label: "Close Panel",
-          leading: FormRow.Icon
-            ? common.React.createElement(FormRow.Icon, { source: assets.getAssetIDByName("ic_close") })
-            : undefined,
-          onPress: () => {
-            if (props?.inSheet) { try { ActionSheetModule.hideActionSheet(); } catch {} }
-            else closePanel(nav);
-          },
-        }),
-        common.React.createElement(FakeMessageSection, { tick, setTick }),
-        common.React.createElement(TimestampSection, { setTick }),
-        common.React.createElement(ConversationSection, { tick, setTick }),
-        common.React.createElement(ProfileSection, { tick, setTick }),
-        common.React.createElement(SavedMessagesSection, { setTick }),
+          }),
+        ),
+        n.React.createElement(
+          N,
+          { title: "Custom Timestamp" },
+          n.React.createElement(A, {
+            label:
+              "UK time (GMT/BST)" + (ukOn() ? " - ON" : " - off"),
+            subLabel:
+              "Automatic timestamps use UK time, and times you enter are treated as UK. Handles BST/GMT automatically.",
+            trailing: n.React.createElement(v.Forms.FormSwitch, {
+              value: ukOn(),
+              onValueChange: function (o) {
+                e.storage.ukTime = o;
+                setTick(function (kk) {
+                  return kk + 1;
+                });
+              },
+            }),
+          }),
+          n.React.createElement(A, {
+            label: ukOn()
+              ? "UTC mode (ignored while UK is on)"
+              : e.storage.useUTC
+                ? "Using UTC Time"
+                : "Using Local Time",
+            subLabel: ukOn()
+              ? "Turn off UK time above to use this."
+              : e.storage.useUTC
+                ? "Time will be the same for everyone"
+                : "Time will adjust to viewer's timezone",
+            trailing: n.React.createElement(v.Forms.FormSwitch, {
+              value: e.storage.useUTC || !1,
+              onValueChange: function (o) {
+                e.storage.useUTC = o;
+                setTick(function (kk) {
+                  return kk + 1;
+                });
+              },
+            }),
+          }),
+          n.React.createElement(f, {
+            title: "Year",
+            placeholder: "YYYY (e.g., 2024)",
+            value: String(d),
+            onChange: function (o) {
+              const a = parseInt(o);
+              e.storage.customYear = isNaN(a) ? t.getFullYear() : a;
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(f, {
+            title: "Month",
+            placeholder: "1-12",
+            value: String(i),
+            onChange: function (o) {
+              const a = parseInt(o);
+              e.storage.customMonth = isNaN(a)
+                ? t.getMonth() + 1
+                : Math.min(Math.max(a, 1), 12);
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(f, {
+            title: "Day",
+            placeholder: "1-31",
+            value: String(g),
+            onChange: function (o) {
+              const a = parseInt(o);
+              e.storage.customDay = isNaN(a)
+                ? t.getDate()
+                : Math.min(Math.max(a, 1), 31);
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(f, {
+            title: "Hour",
+            placeholder: "0-23",
+            value: String(h),
+            onChange: function (o) {
+              const a = parseInt(o);
+              e.storage.customHour = isNaN(a)
+                ? t.getHours()
+                : Math.min(Math.max(a, 0), 23);
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(f, {
+            title: "Minute",
+            placeholder: "0-59",
+            value: String(M),
+            onChange: function (o) {
+              const a = parseInt(o);
+              e.storage.customMinute = isNaN(a)
+                ? t.getMinutes()
+                : Math.min(Math.max(a, 0), 59);
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(A, {
+            label: "Send Fake Message",
+            subLabel: `${u} messages saved | Timestamp: ${d}-${String(i).padStart(2, "0")}-${String(g).padStart(2, "0")} ${String(h).padStart(2, "0")}:${String(M).padStart(2, "0")}`,
+            onPress: async function () {
+              const o = Y(),
+                a = (e.storage.message || "").trim();
+              if (!a || !o) return;
+              const p =
+                (e.storage.userId || "").trim() || F.getCurrentUser()?.id;
+              if (!p) return;
+              const C = (
+                  e.storage.useUTC && !ukOn()
+                    ? new Date(
+                        Date.UTC(
+                          e.storage.customYear || t.getFullYear(),
+                          (e.storage.customMonth || t.getMonth() + 1) - 1,
+                          e.storage.customDay || t.getDate(),
+                          e.storage.customHour !== void 0
+                            ? e.storage.customHour
+                            : t.getHours(),
+                          e.storage.customMinute !== void 0
+                            ? e.storage.customMinute
+                            : t.getMinutes(),
+                          0,
+                          0,
+                        ),
+                      )
+                    : new Date(
+                        e.storage.customYear || t.getFullYear(),
+                        (e.storage.customMonth || t.getMonth() + 1) - 1,
+                        e.storage.customDay || t.getDate(),
+                        e.storage.customHour !== void 0
+                          ? e.storage.customHour
+                          : t.getHours(),
+                        e.storage.customMinute !== void 0
+                          ? e.storage.customMinute
+                          : t.getMinutes(),
+                        0,
+                        0,
+                      )
+                ).toISOString(),
+                m = genId(C);
+              (await P(o, p, a, C, m),
+                z(o, p, a, m, C),
+                tt("Fake message sent."));
+            },
+          }),
+        ),
+        n.React.createElement(
+          N,
+          { title: "Conversation Builder" },
+          n.React.createElement(f, {
+            title: "Conversation",
+            placeholder:
+              "One line each:\nuserId [time] [^reply] - message\n\nme = you  |  them = the User ID above\n^N = reply to line N  |  ^ = reply to previous\n\nExample:\nme [9pm] - hey\nthem [9:01pm] ^1 - hi back\nme ^ - lol",
+            value: e.storage.conversationText || "",
+            onChange: function (o) {
+              e.storage.conversationText = o || "";
+            },
+            multiline: !0,
+          }),
+          n.React.createElement(A, {
+            label: "Build Conversation",
+            subLabel:
+              "Format: userId [time] [^reply] - message. 'me' = you, 'them' = the User ID above. Reply with ^N (the Nth message) or ^ (previous message). Time optional (9pm, 21:00, 2024-12-25 14:30); untimed lines are spaced 1 min apart. Honors the UTC toggle.",
+            onPress: async function () {
+              await runConvo();
+            },
+          }),
+          n.React.createElement(f, {
+            title: "Save this conversation as (optional)",
+            placeholder: "A name to find it later",
+            value: e.storage.convoSaveName || "",
+            onChange: function (o) {
+              e.storage.convoSaveName = o || "";
+            },
+          }),
+          n.React.createElement(A, {
+            label: "Save conversation",
+            subLabel:
+              "Keeps the text above on this device so you can reload it later. Stays local - nothing leaves your device.",
+            onPress: function () {
+              const txt = e.storage.conversationText || "";
+              if (!txt.trim()) {
+                tt("Nothing to save - the conversation box is empty.");
+                return;
+              }
+              const arr = (e.storage.savedConvos || []).slice();
+              const nm =
+                ("" + (e.storage.convoSaveName || "")).trim() ||
+                "Saved " + (arr.length + 1);
+              arr.push({ name: nm, text: txt });
+              e.storage.savedConvos = arr;
+              e.storage.convoSaveName = "";
+              tt('Saved "' + nm + '".');
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          (e.storage.savedConvos || []).length
+            ? n.React.createElement(A, {
+                label: "Clear saved conversations",
+                subLabel:
+                  (e.storage.savedConvos || []).length +
+                  " saved. Removes them all.",
+                onPress: function () {
+                  e.storage.savedConvos = [];
+                  tt("Cleared saved conversations.");
+                  setTick(function (kk) {
+                    return kk + 1;
+                  });
+                },
+              })
+            : null,
+          (e.storage.savedConvos || []).map(function (sc, idx) {
+            return n.React.createElement(A, {
+              key: "sc" + idx,
+              label: sc.name,
+              subLabel: "Tap to load this into the builder.",
+              onPress: function () {
+                e.storage.conversationText = sc.text || "";
+                tt('Loaded "' + sc.name + '".');
+                setTick(function (kk) {
+                  return kk + 1;
+                });
+              },
+            });
+          }),
+        ),
+        n.React.createElement(
+          N,
+          { title: "Fake Profiles" },
+          n.React.createElement(A, {
+            label:
+              "Override a user ID's display name and avatar across the app (chat, profiles, server member lists). Either set a name/avatar, or mirror another user's profile.",
+          }),
+          n.React.createElement(A, {
+            label: "Patch status (for debugging)",
+            subLabel: patchInfo,
+          }),
+          n.React.createElement(f, {
+            title: "User ID",
+            placeholder: "User ID to customize",
+            value: pid,
+            onChange: function (o) {
+              e.storage.profileId = (o || "").replace(/[^0-9]/g, "");
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(f, {
+            title: "Display Name",
+            placeholder: "Name to show (optional)",
+            value: pname,
+            onChange: function (o) {
+              e.storage.profileName = o || "";
+            },
+          }),
+          n.React.createElement(f, {
+            title: "Avatar URL",
+            placeholder: "https://... image link (optional)",
+            value: pavatar,
+            onChange: function (o) {
+              e.storage.profileAvatar = o || "";
+            },
+          }),
+          n.React.createElement(f, {
+            title: "Copy From User ID",
+            placeholder: "Mirror this user's name + pfp (optional)",
+            value: psource,
+            onChange: function (o) {
+              e.storage.profileSource = (o || "").replace(/[^0-9]/g, "");
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(f, {
+            title: "Server Member Since date (optional)",
+            placeholder: "e.g. 4/3/26  (blank = your account date)",
+            value: pjoined,
+            onChange: function (o) {
+              e.storage.profileJoined = o || "";
+            },
+          }),
+          n.React.createElement(f, {
+            title: "Discord account created date (optional)",
+            placeholder: "e.g. 4/3/26  (blank = copies your account)",
+            value: paccount,
+            onChange: function (o) {
+              e.storage.profileAccount = o || "";
+            },
+          }),
+          n.React.createElement(A, {
+            label: "Render as my own profile (experimental)",
+            subLabel:
+              "Makes opening this user's profile show the self-profile layout (Edit Profile button). May break that profile screen; turn off if it crashes.",
+            trailing: n.React.createElement(v.Forms.FormSwitch, {
+              value: psel === !0,
+              onValueChange: function (o) {
+                e.storage.profileSelf = o;
+              },
+            }),
+          }),
+          n.React.createElement(A, {
+            label: "Save Profile",
+            onPress: function () {
+              saveProfile();
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          n.React.createElement(A, {
+            label: "Cache my profile now (for banner/bio)",
+            subLabel:
+              "Fetches every source profile so banner, bio, pronouns and accent are available to copy.",
+            leading: A.Icon
+              ? n.React.createElement(A.Icon, {
+                  source: B.getAssetIDByName("ic_download_24px"),
+                })
+              : void 0,
+            onPress: function () {
+              try {
+                const c = prefetchSources();
+                tt(
+                  c
+                    ? "Fetching " + c + " source profile(s). Reopen the target in a moment."
+                    : "No mirror sources set. Add a Copy From User ID first.",
+                );
+              } catch {
+                tt("Couldn't trigger a profile fetch on this build.");
+              }
+            },
+          }),
+          n.React.createElement(A, {
+            label: "Remove This Profile",
+            subLabel: "Deletes the profile for the User ID above.",
+            leading: A.Icon
+              ? n.React.createElement(A.Icon, {
+                  source: B.getAssetIDByName("ic_trash_24px"),
+                })
+              : void 0,
+            onPress: function () {
+              removeProfile();
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          profKeys.length
+            ? n.React.createElement(A, {
+                label: "Saved profiles (" + profKeys.length + ") - tap to edit:",
+              })
+            : null,
+          profKeys.map(function (k) {
+            const pr = profs[k] || {};
+            return n.React.createElement(A, {
+              key: k,
+              label: (pr.name || (pr.sourceId ? "(mirror)" : "(no name)")) + "  -  " + k,
+              subLabel: pr.sourceId
+                ? "Mirrors user " + pr.sourceId
+                : pr.avatar
+                  ? "Custom avatar set"
+                  : "Name only",
+              onPress: function () {
+                ((e.storage.profileId = k),
+                  (e.storage.profileName = pr.name || ""),
+                  (e.storage.profileAvatar = pr.avatar || ""),
+                  (e.storage.profileSource = pr.sourceId || ""),
+                  (e.storage.profileJoined = pr.joinedAt
+                    ? fmtSimple(pr.joinedAt)
+                    : ""),
+                  (e.storage.profileAccount = pr.accountDate
+                    ? fmtSimple(pr.accountDate)
+                    : ""),
+                  (e.storage.profileSelf = !!pr.self));
+                setTick(function (kk) {
+                  return kk + 1;
+                });
+              },
+            });
+          }),
+        ),
+        n.React.createElement(
+          N,
+          { title: "Saved Messages" },
+          n.React.createElement(A, {
+            label: "Clear Saved Messages",
+            subLabel:
+              u +
+              " saved. These replay each time you reopen a channel - clearing stops that.",
+            leading: A.Icon
+              ? n.React.createElement(A.Icon, {
+                  source: B.getAssetIDByName("ic_trash_24px"),
+                })
+              : void 0,
+            onPress: function () {
+              clearSaved();
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          n.React.createElement(A, {
+            label: "Remove All Spoofed Messages",
+            subLabel:
+              "Deletes every spoofed message from view now and clears the saved list.",
+            leading: A.Icon
+              ? n.React.createElement(A.Icon, {
+                  source: B.getAssetIDByName("ic_trash_24px"),
+                })
+              : void 0,
+            onPress: function () {
+              removeAllFakes();
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+        ),
       );
     },
   };
-
   return (
-    (exports.default = PluginExport),
-    Object.defineProperty(exports, "__esModule", { value: true }),
-    exports
+    (U.default = J),
+    Object.defineProperty(U, "__esModule", { value: !0 }),
+    U
   );
 })(
   {},
-  (vendetta.metro && vendetta.metro.common) || {},
-  vendetta.metro || {},
-  (vendetta.ui && vendetta.ui.components) || {},
-  vendetta.plugin || { storage: (function () {
-    try {
-      var S = vendetta.storage;
-      if (S && typeof S.createStorage === "function" && typeof S.createMMKVBackend === "function") {
-        var st = S.createStorage(S.createMMKVBackend("local-message-spoofer"));
-        if (typeof S.awaitSyncWrapper === "function") { try { S.awaitSyncWrapper(st); } catch (e) {} }
-        return st;
-      }
-    } catch (e) {}
-    return {};
-  })() },
-  vendetta.patcher || {},
-  (vendetta.ui && vendetta.ui.assets) || {},
-  vendetta.utils || {},
+  vendetta.metro.common,
+  vendetta.metro,
+  vendetta.ui.components,
+  vendetta.plugin,
+  vendetta.patcher,
+  vendetta.ui.assets,
+  vendetta.utils,
 );
