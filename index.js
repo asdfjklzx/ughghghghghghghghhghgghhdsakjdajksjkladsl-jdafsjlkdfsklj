@@ -2185,6 +2185,10 @@
         props && props.inSheet ? n.React.Fragment : v.Forms.Form,
         {},
         n.React.createElement(A, {
+          label: "Local Message Spoofer",
+          subLabel: "Local-only fake messages \u00b7 nothing leaves your device",
+        }),
+        n.React.createElement(A, {
           label: "Close Panel",
           leading: A.Icon
             ? n.React.createElement(A.Icon, {
@@ -2606,158 +2610,6 @@
               onPress: function () {
                 e.storage.conversationText = sc.text || "";
                 tt('Loaded "' + sc.name + '".');
-                setTick(function (kk) {
-                  return kk + 1;
-                });
-              },
-            });
-          }),
-        ),
-        n.React.createElement(
-          N,
-          { title: "Fake Profiles" },
-          n.React.createElement(A, {
-            label:
-              "Override a user ID's display name and avatar across the app (chat, profiles, server member lists). Either set a name/avatar, or mirror another user's profile.",
-          }),
-          n.React.createElement(A, {
-            label: "Patch status (for debugging)",
-            subLabel: patchInfo,
-          }),
-          n.React.createElement(f, {
-            title: "User ID",
-            placeholder: "User ID to customize",
-            value: pid,
-            onChange: function (o) {
-              e.storage.profileId = (o || "").replace(/[^0-9]/g, "");
-            },
-            keyboardType: "number-pad",
-          }),
-          n.React.createElement(f, {
-            title: "Display Name",
-            placeholder: "Name to show (optional)",
-            value: pname,
-            onChange: function (o) {
-              e.storage.profileName = o || "";
-            },
-          }),
-          n.React.createElement(f, {
-            title: "Avatar URL",
-            placeholder: "https://... image link (optional)",
-            value: pavatar,
-            onChange: function (o) {
-              e.storage.profileAvatar = o || "";
-            },
-          }),
-          n.React.createElement(f, {
-            title: "Copy From User ID",
-            placeholder: "Mirror this user's name + pfp (optional)",
-            value: psource,
-            onChange: function (o) {
-              e.storage.profileSource = (o || "").replace(/[^0-9]/g, "");
-            },
-            keyboardType: "number-pad",
-          }),
-          n.React.createElement(f, {
-            title: "Server Member Since date (optional)",
-            placeholder: "e.g. 4/3/26  (blank = your account date)",
-            value: pjoined,
-            onChange: function (o) {
-              e.storage.profileJoined = o || "";
-            },
-          }),
-          n.React.createElement(f, {
-            title: "Discord account created date (optional)",
-            placeholder: "e.g. 4/3/26  (blank = copies your account)",
-            value: paccount,
-            onChange: function (o) {
-              e.storage.profileAccount = o || "";
-            },
-          }),
-          n.React.createElement(A, {
-            label: "Render as my own profile (experimental)",
-            subLabel:
-              "Makes opening this user's profile show the self-profile layout (Edit Profile button). May break that profile screen; turn off if it crashes.",
-            trailing: n.React.createElement(v.Forms.FormSwitch, {
-              value: psel === !0,
-              onValueChange: function (o) {
-                e.storage.profileSelf = o;
-              },
-            }),
-          }),
-          n.React.createElement(A, {
-            label: "Save Profile",
-            onPress: function () {
-              saveProfile();
-              setTick(function (kk) {
-                return kk + 1;
-              });
-            },
-          }),
-          n.React.createElement(A, {
-            label: "Cache my profile now (for banner/bio)",
-            subLabel:
-              "Fetches every source profile so banner, bio, pronouns and accent are available to copy.",
-            leading: A.Icon
-              ? n.React.createElement(A.Icon, {
-                  source: B.getAssetIDByName("ic_download_24px"),
-                })
-              : void 0,
-            onPress: function () {
-              try {
-                const c = prefetchSources();
-                tt(
-                  c
-                    ? "Fetching " + c + " source profile(s). Reopen the target in a moment."
-                    : "No mirror sources set. Add a Copy From User ID first.",
-                );
-              } catch {
-                tt("Couldn't trigger a profile fetch on this build.");
-              }
-            },
-          }),
-          n.React.createElement(A, {
-            label: "Remove This Profile",
-            subLabel: "Deletes the profile for the User ID above.",
-            leading: A.Icon
-              ? n.React.createElement(A.Icon, {
-                  source: B.getAssetIDByName("ic_trash_24px"),
-                })
-              : void 0,
-            onPress: function () {
-              removeProfile();
-              setTick(function (kk) {
-                return kk + 1;
-              });
-            },
-          }),
-          profKeys.length
-            ? n.React.createElement(A, {
-                label: "Saved profiles (" + profKeys.length + ") - tap to edit:",
-              })
-            : null,
-          profKeys.map(function (k) {
-            const pr = profs[k] || {};
-            return n.React.createElement(A, {
-              key: k,
-              label: (pr.name || (pr.sourceId ? "(mirror)" : "(no name)")) + "  -  " + k,
-              subLabel: pr.sourceId
-                ? "Mirrors user " + pr.sourceId
-                : pr.avatar
-                  ? "Custom avatar set"
-                  : "Name only",
-              onPress: function () {
-                ((e.storage.profileId = k),
-                  (e.storage.profileName = pr.name || ""),
-                  (e.storage.profileAvatar = pr.avatar || ""),
-                  (e.storage.profileSource = pr.sourceId || ""),
-                  (e.storage.profileJoined = pr.joinedAt
-                    ? fmtSimple(pr.joinedAt)
-                    : ""),
-                  (e.storage.profileAccount = pr.accountDate
-                    ? fmtSimple(pr.accountDate)
-                    : ""),
-                  (e.storage.profileSelf = !!pr.self));
                 setTick(function (kk) {
                   return kk + 1;
                 });
