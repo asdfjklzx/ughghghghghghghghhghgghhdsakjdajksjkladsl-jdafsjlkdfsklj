@@ -2427,6 +2427,52 @@
               },
             }),
           }),
+          n.React.createElement(A, {
+            label: "Send Fake Message",
+            subLabel: "Sends using the current timestamp settings.",
+            leading: A.Icon
+              ? n.React.createElement(A.Icon, {
+                  source: B.getAssetIDByName("ic_send"),
+                })
+              : void 0,
+            onPress: async function () {
+              const o = Y(),
+                a = (e.storage.message || "").trim();
+              if (!a || !o) {
+                tt("Enter a message and open a channel first.");
+                return;
+              }
+              const p =
+                (e.storage.userId || "").trim() || F.getCurrentUser()?.id;
+              if (!p) return;
+              const _nd = nowDate();
+              const C = (
+                e.storage.useUTC && !ukOn()
+                  ? new Date(
+                      Date.UTC(
+                        e.storage.customYear || _nd.getFullYear(),
+                        (e.storage.customMonth || _nd.getMonth() + 1) - 1,
+                        e.storage.customDay || _nd.getDate(),
+                        e.storage.customHour !== void 0 ? e.storage.customHour : _nd.getHours(),
+                        e.storage.customMinute !== void 0 ? e.storage.customMinute : _nd.getMinutes(),
+                        0, 0,
+                      ),
+                    )
+                  : new Date(
+                      e.storage.customYear || _nd.getFullYear(),
+                      (e.storage.customMonth || _nd.getMonth() + 1) - 1,
+                      e.storage.customDay || _nd.getDate(),
+                      e.storage.customHour !== void 0 ? e.storage.customHour : _nd.getHours(),
+                      e.storage.customMinute !== void 0 ? e.storage.customMinute : _nd.getMinutes(),
+                      0, 0,
+                    )
+              ).toISOString();
+              const m = genId(C);
+              await P(o, p, a, C, m);
+              z(o, p, a, m, C);
+              tt("Fake message sent.");
+            },
+          }),
         )
                   )
                 ),
