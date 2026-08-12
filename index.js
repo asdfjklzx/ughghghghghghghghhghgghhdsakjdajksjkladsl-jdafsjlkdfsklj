@@ -2154,6 +2154,16 @@
     },
     settings: function (props) {
       const [tick, setTick] = n.React.useState(0);
+      const [tab, setTab] = n.React.useState(0);
+      const _scrollRef = n.React.useRef(null);
+      const _RN = n.ReactNative || l.findByProps("ScrollView", "View");
+      const _View = _RN && _RN.View;
+      const _SV = _RN && _RN.ScrollView;
+      const _Touch = (_RN && _RN.TouchableOpacity) || (_RN && _RN.Pressable);
+      const _Text = _RN && _RN.Text;
+      let _width = 380;
+      try { if (_RN && _RN.Dimensions && _RN.Dimensions.get) _width = _RN.Dimensions.get("window").width || 380; } catch {}
+      const _canSwipe = !!(_View && _SV && _Touch && _Text);
       let nav = null;
       try {
         if (NV && NV.useNavigation) nav = NV.useNavigation();
@@ -2205,6 +2215,514 @@
             }
           },
         }),
+        _canSwipe
+          ? n.React.createElement(
+              _View,
+              { key: "pager" },
+              n.React.createElement(
+                _View,
+                { style: { flexDirection: "row", paddingHorizontal: 6, marginBottom: 4 } },
+                ["Message", "Time", "Convo", "Saved"].map(function (lbl, i) {
+                  return n.React.createElement(
+                    _Touch,
+                    {
+                      key: "tab" + i,
+                      style: { flex: 1, paddingVertical: 9, alignItems: "center", borderBottomWidth: 2, borderBottomColor: tab === i ? "#5865f2" : "rgba(255,255,255,0.08)" },
+                      onPress: function () { setTab(i); try { _scrollRef.current && _scrollRef.current.scrollTo({ x: i * _width, animated: true }); } catch {} },
+                    },
+                    n.React.createElement(_Text, { style: { color: tab === i ? "#ffffff" : "#949ba4", fontSize: 13, fontWeight: tab === i ? "600" : "400" } }, lbl)
+                  );
+                })
+              ),
+              n.React.createElement(
+                _SV,
+                { ref: _scrollRef, horizontal: true, pagingEnabled: true, showsHorizontalScrollIndicator: false, keyboardShouldPersistTaps: "handled", onMomentumScrollEnd: function (ev) { try { setTab(Math.round(ev.nativeEvent.contentOffset.x / _width)); } catch {} } },
+                n.React.createElement(
+                  _View,
+                  { style: { width: _width } },
+                  n.React.createElement(
+                    _SV,
+                    { style: { maxHeight: 520 }, contentContainerStyle: { paddingBottom: 160 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
+        n.React.createElement(
+          N,
+          { title: "Fake Message" },
+          n.React.createElement(f, {
+            key: "uid" + tick,
+            title: "User ID (Optional)",
+            placeholder: "Leave empty to use current user",
+            value: r,
+            onChange: function (o) {
+              e.storage.userId = o || "";
+            },
+            helperText: c
+              ? `User: ${c.username} - use "them" in the builder`
+              : r
+                ? 'User not found (still usable as "them")'
+                : "Will use your account",
+          }),
+          n.React.createElement(A, {
+            label: "Fill from current chat",
+            subLabel:
+              "Grab the other person in this DM (or the last sender in this channel).",
+            leading: A.Icon
+              ? n.React.createElement(A.Icon, {
+                  source: B.getAssetIDByName("ic_members"),
+                })
+              : void 0,
+            onPress: function () {
+              const id = fillFromChat();
+              if (id) {
+                e.storage.userId = id;
+                setTick(function (kk) {
+                  return kk + 1;
+                });
+                tt("Filled User ID: " + id);
+              } else
+                tt(
+                  'Couldn\'t find a user here. Open a DM, or long-press a message and pick "Use as Fake User".',
+                );
+            },
+          }),
+          n.React.createElement(f, {
+            title: "Message",
+            placeholder: "Enter message content",
+            value: s,
+            onChange: function (o) {
+              e.storage.message = o || "";
+            },
+            multiline: !0,
+          }),
+          n.React.createElement(f, {
+            title: "Server ID for [server] tag (optional)",
+            placeholder: "Paste a server ID; [server] becomes its name",
+            value: e.storage.serverTagId || "",
+            onChange: function (o) {
+              e.storage.serverTagId = o || "";
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          n.React.createElement(A, {
+            label:
+              "[server] = " +
+              (resolveServerName(null, Y()) ||
+                "(no match - join that server or recheck the ID)"),
+            subLabel:
+              "Type [server] in your message and it's swapped for the name when sent. Use [server:123] to name a specific server inline.",
+          }),
+          n.React.createElement(A, {
+            label: "Use the server I'm in now",
+            subLabel: "One tap - fills the box above with your current server.",
+            onPress: function () {
+              const ch = O && O.getChannel && O.getChannel(Y());
+              const gid = ch && ch.guild_id;
+              if (!gid) {
+                tt("You're not in a server right now - open a server channel first.");
+                return;
+              }
+              e.storage.serverTagId = gid;
+              const g = Q && Q.getGuild && Q.getGuild(gid);
+              tt('Set to "' + ((g && g.name) || gid) + '".');
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          n.React.createElement(A, {
+            label: e.storage.serverPickerOpen
+              ? "Hide server list"
+              : "Pick from my servers",
+            subLabel: "Choose a server by name - no ID needed.",
+            onPress: function () {
+              e.storage.serverPickerOpen = !e.storage.serverPickerOpen;
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          e.storage.serverPickerOpen
+            ? (function () {
+                let guilds = [];
+                try {
+                  const all = (Q && Q.getGuilds && Q.getGuilds()) || {};
+                  guilds = Object.keys(all)
+                    .map(function (k) {
+                      return all[k];
+                    })
+                    .filter(function (g) {
+                      return g && g.name;
+                    });
+                  guilds.sort(function (a, b) {
+                    return ("" + a.name).localeCompare("" + b.name);
+                  });
+                } catch {}
+                const sq = ("" + (e.storage.serverSearch || ""))
+                  .trim()
+                  .toLowerCase();
+                if (sq)
+                  guilds = guilds.filter(function (g) {
+                    return ("" + g.name).toLowerCase().indexOf(sq) !== -1;
+                  });
+                const total = guilds.length,
+                  shown = guilds.slice(0, 30),
+                  rows = [
+                    n.React.createElement(f, {
+                      key: "ssearch",
+                      title: "Search servers",
+                      placeholder: "Type a server name",
+                      value: e.storage.serverSearch || "",
+                      onChange: function (o) {
+                        e.storage.serverSearch = o || "";
+                        setTick(function (kk) {
+                          return kk + 1;
+                        });
+                      },
+                    }),
+                  ];
+                if (!shown.length)
+                  rows.push(
+                    n.React.createElement(A, {
+                      key: "snone",
+                      label: sq ? "(no servers match)" : "(no servers found)",
+                    }),
+                  );
+                shown.forEach(function (g) {
+                  rows.push(
+                    n.React.createElement(A, {
+                      key: "g" + g.id,
+                      label: g.name,
+                      onPress: function () {
+                        e.storage.serverTagId = g.id;
+                        e.storage.serverPickerOpen = !1;
+                        e.storage.serverSearch = "";
+                        tt('Set to "' + g.name + '".');
+                        setTick(function (kk) {
+                          return kk + 1;
+                        });
+                      },
+                    }),
+                  );
+                });
+                if (total > shown.length)
+                  rows.push(
+                    n.React.createElement(A, {
+                      key: "smore",
+                      label:
+                        total - shown.length + " more - keep typing to narrow",
+                      subLabel: "Showing the first 30 matches.",
+                    }),
+                  );
+                return rows;
+              })()
+            : null,
+          n.React.createElement(A, {
+            label: "Link Previews",
+            subLabel:
+              "Show embeds for links in fake messages (YouTube, websites, images).",
+            trailing: n.React.createElement(v.Forms.FormSwitch, {
+              value: e.storage.embedsEnabled !== !1,
+              onValueChange: function (o) {
+                e.storage.embedsEnabled = o;
+              },
+            }),
+          }),
+        )
+                  )
+                ),
+                n.React.createElement(
+                  _View,
+                  { style: { width: _width } },
+                  n.React.createElement(
+                    _SV,
+                    { style: { maxHeight: 520 }, contentContainerStyle: { paddingBottom: 160 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
+        n.React.createElement(
+          N,
+          { title: "Custom Timestamp" },
+          n.React.createElement(A, {
+            label:
+              "UK time (GMT/BST)" + (ukOn() ? " - ON" : " - off"),
+            subLabel:
+              "Automatic timestamps use UK time, and times you enter are treated as UK. Handles BST/GMT automatically.",
+            trailing: n.React.createElement(v.Forms.FormSwitch, {
+              value: ukOn(),
+              onValueChange: function (o) {
+                e.storage.ukTime = o;
+                setTick(function (kk) {
+                  return kk + 1;
+                });
+              },
+            }),
+          }),
+          n.React.createElement(A, {
+            label: ukOn()
+              ? "UTC mode (ignored while UK is on)"
+              : e.storage.useUTC
+                ? "Using UTC Time"
+                : "Using Local Time",
+            subLabel: ukOn()
+              ? "Turn off UK time above to use this."
+              : e.storage.useUTC
+                ? "Time will be the same for everyone"
+                : "Time will adjust to viewer's timezone",
+            trailing: n.React.createElement(v.Forms.FormSwitch, {
+              value: e.storage.useUTC || !1,
+              onValueChange: function (o) {
+                e.storage.useUTC = o;
+                setTick(function (kk) {
+                  return kk + 1;
+                });
+              },
+            }),
+          }),
+          n.React.createElement(f, {
+            title: "Year",
+            placeholder: "YYYY (e.g., 2024)",
+            value: String(d),
+            onChange: function (o) {
+              const a = parseInt(o);
+              e.storage.customYear = isNaN(a) ? t.getFullYear() : a;
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(f, {
+            title: "Month",
+            placeholder: "1-12",
+            value: String(i),
+            onChange: function (o) {
+              const a = parseInt(o);
+              e.storage.customMonth = isNaN(a)
+                ? t.getMonth() + 1
+                : Math.min(Math.max(a, 1), 12);
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(f, {
+            title: "Day",
+            placeholder: "1-31",
+            value: String(g),
+            onChange: function (o) {
+              const a = parseInt(o);
+              e.storage.customDay = isNaN(a)
+                ? t.getDate()
+                : Math.min(Math.max(a, 1), 31);
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(f, {
+            title: "Hour",
+            placeholder: "0-23",
+            value: String(h),
+            onChange: function (o) {
+              const a = parseInt(o);
+              e.storage.customHour = isNaN(a)
+                ? t.getHours()
+                : Math.min(Math.max(a, 0), 23);
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(f, {
+            title: "Minute",
+            placeholder: "0-59",
+            value: String(M),
+            onChange: function (o) {
+              const a = parseInt(o);
+              e.storage.customMinute = isNaN(a)
+                ? t.getMinutes()
+                : Math.min(Math.max(a, 0), 59);
+            },
+            keyboardType: "number-pad",
+          }),
+          n.React.createElement(A, {
+            label: "Send Fake Message",
+            subLabel: `${u} messages saved | Timestamp: ${d}-${String(i).padStart(2, "0")}-${String(g).padStart(2, "0")} ${String(h).padStart(2, "0")}:${String(M).padStart(2, "0")}`,
+            onPress: async function () {
+              const o = Y(),
+                a = (e.storage.message || "").trim();
+              if (!a || !o) return;
+              const p =
+                (e.storage.userId || "").trim() || F.getCurrentUser()?.id;
+              if (!p) return;
+              const C = (
+                  e.storage.useUTC && !ukOn()
+                    ? new Date(
+                        Date.UTC(
+                          e.storage.customYear || t.getFullYear(),
+                          (e.storage.customMonth || t.getMonth() + 1) - 1,
+                          e.storage.customDay || t.getDate(),
+                          e.storage.customHour !== void 0
+                            ? e.storage.customHour
+                            : t.getHours(),
+                          e.storage.customMinute !== void 0
+                            ? e.storage.customMinute
+                            : t.getMinutes(),
+                          0,
+                          0,
+                        ),
+                      )
+                    : new Date(
+                        e.storage.customYear || t.getFullYear(),
+                        (e.storage.customMonth || t.getMonth() + 1) - 1,
+                        e.storage.customDay || t.getDate(),
+                        e.storage.customHour !== void 0
+                          ? e.storage.customHour
+                          : t.getHours(),
+                        e.storage.customMinute !== void 0
+                          ? e.storage.customMinute
+                          : t.getMinutes(),
+                        0,
+                        0,
+                      )
+                ).toISOString(),
+                m = genId(C);
+              (await P(o, p, a, C, m),
+                z(o, p, a, m, C),
+                tt("Fake message sent."));
+            },
+          }),
+        )
+                  )
+                ),
+                n.React.createElement(
+                  _View,
+                  { style: { width: _width } },
+                  n.React.createElement(
+                    _SV,
+                    { style: { maxHeight: 520 }, contentContainerStyle: { paddingBottom: 160 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
+        n.React.createElement(
+          N,
+          { title: "Conversation Builder" },
+          n.React.createElement(f, {
+            title: "Conversation",
+            placeholder:
+              "One line each:\nuserId [time] [^reply] - message\n\nme = you  |  them = the User ID above\n^N = reply to line N  |  ^ = reply to previous\n\nExample:\nme [9pm] - hey\nthem [9:01pm] ^1 - hi back\nme ^ - lol",
+            value: e.storage.conversationText || "",
+            onChange: function (o) {
+              e.storage.conversationText = o || "";
+            },
+            multiline: !0,
+          }),
+          n.React.createElement(A, {
+            label: "Build Conversation",
+            subLabel:
+              "'me' = you, 'them' = the User ID above. Reply with ^N or ^ (previous). Time optional; untimed lines space 1 min apart.",
+            onPress: async function () {
+              await runConvo();
+            },
+          }),
+          n.React.createElement(f, {
+            title: "Save this conversation as (optional)",
+            placeholder: "A name to find it later",
+            value: e.storage.convoSaveName || "",
+            onChange: function (o) {
+              e.storage.convoSaveName = o || "";
+            },
+          }),
+          n.React.createElement(A, {
+            label: "Save conversation",
+            subLabel:
+              "Saves the text above on-device to reload later. Stays local.",
+            onPress: function () {
+              const txt = e.storage.conversationText || "";
+              if (!txt.trim()) {
+                tt("Nothing to save - the conversation box is empty.");
+                return;
+              }
+              const arr = (e.storage.savedConvos || []).slice();
+              const nm =
+                ("" + (e.storage.convoSaveName || "")).trim() ||
+                "Saved " + (arr.length + 1);
+              arr.push({ name: nm, text: txt });
+              e.storage.savedConvos = arr;
+              e.storage.convoSaveName = "";
+              tt('Saved "' + nm + '".');
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          (e.storage.savedConvos || []).length
+            ? n.React.createElement(A, {
+                label: "Clear saved conversations",
+                subLabel:
+                  (e.storage.savedConvos || []).length +
+                  " saved. Removes them all.",
+                onPress: function () {
+                  e.storage.savedConvos = [];
+                  tt("Cleared saved conversations.");
+                  setTick(function (kk) {
+                    return kk + 1;
+                  });
+                },
+              })
+            : null,
+          (e.storage.savedConvos || []).map(function (sc, idx) {
+            return n.React.createElement(A, {
+              key: "sc" + idx,
+              label: sc.name,
+              subLabel: "Tap to load this into the builder.",
+              onPress: function () {
+                e.storage.conversationText = sc.text || "";
+                tt('Loaded "' + sc.name + '".');
+                setTick(function (kk) {
+                  return kk + 1;
+                });
+              },
+            });
+          }),
+        )
+                  )
+                ),
+                n.React.createElement(
+                  _View,
+                  { style: { width: _width } },
+                  n.React.createElement(
+                    _SV,
+                    { style: { maxHeight: 520 }, contentContainerStyle: { paddingBottom: 160 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
+        n.React.createElement(
+          N,
+          { title: "Saved Messages" },
+          n.React.createElement(A, {
+            label: "Clear Saved Messages",
+            subLabel:
+              u +
+              " saved. These replay each time you reopen a channel - clearing stops that.",
+            leading: A.Icon
+              ? n.React.createElement(A.Icon, {
+                  source: B.getAssetIDByName("ic_trash_24px"),
+                })
+              : void 0,
+            onPress: function () {
+              clearSaved();
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+          n.React.createElement(A, {
+            label: "Remove All Spoofed Messages",
+            subLabel:
+              "Deletes every spoofed message from view now and clears the saved list.",
+            leading: A.Icon
+              ? n.React.createElement(A.Icon, {
+                  source: B.getAssetIDByName("ic_trash_24px"),
+                })
+              : void 0,
+            onPress: function () {
+              removeAllFakes();
+              setTick(function (kk) {
+                return kk + 1;
+              });
+            },
+          }),
+        )
+                  )
+                ),
+              )
+            )
+          : n.React.createElement(
+              n.React.Fragment,
+              {},
         n.React.createElement(
           N,
           { title: "Fake Message" },
@@ -2551,7 +3069,7 @@
           n.React.createElement(A, {
             label: "Build Conversation",
             subLabel:
-              "Format: userId [time] [^reply] - message. 'me' = you, 'them' = the User ID above. Reply with ^N (the Nth message) or ^ (previous message). Time optional (9pm, 21:00, 2024-12-25 14:30); untimed lines are spaced 1 min apart. Honors the UTC toggle.",
+              "'me' = you, 'them' = the User ID above. Reply with ^N or ^ (previous). Time optional; untimed lines space 1 min apart.",
             onPress: async function () {
               await runConvo();
             },
@@ -2567,7 +3085,7 @@
           n.React.createElement(A, {
             label: "Save conversation",
             subLabel:
-              "Keeps the text above on this device so you can reload it later. Stays local - nothing leaves your device.",
+              "Saves the text above on-device to reload later. Stays local.",
             onPress: function () {
               const txt = e.storage.conversationText || "";
               if (!txt.trim()) {
@@ -2653,7 +3171,8 @@
               });
             },
           }),
-        ),
+        )
+            )
       );
     },
   };
