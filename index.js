@@ -1450,15 +1450,26 @@
 
     log("Command API found, registering commands...");
 
+    // If we already registered (e.g. immediate + delayed pass), tear those down first
+    // so we don't create duplicate commands.
+    try {
+      if (registerCommands._registered && registerCommands._registered.length) {
+        registerCommands._registered.forEach(function (un) { try { if (typeof un === "function") un(); } catch (e) {} });
+      }
+    } catch (e) {}
+    registerCommands._registered = [];
+
     // Register each command in isolation - if one throws, the rest still register.
     function safeReg(def, label) {
       try {
         const un = reg(def);
-        if (typeof un === "function") cleanupCallbacks.push(un);
+        if (typeof un === "function") {
+          cleanupCallbacks.push(un);
+          registerCommands._registered.push(un);
+        }
         return true;
       } catch (e) {
         warn("register " + label + " failed", e);
-        showToast("[Spoofer] /" + label + " failed: " + (e.message || "?"));
         return false;
       }
     }
@@ -2552,7 +2563,10 @@
         }
       } catch (err) { warn("diagnostics failed", err); }
 
-      try { registerCommands(); } catch (err) { warn("registerCommands failed", err); showToast("[Spoofer] registerCommands threw: " + (err.message || "?")); }
+      // Register commands AFTER load so Discord's command picker re-scans and shows them.
+      // Registering synchronously during onLoad registers them but the picker doesn't refresh.
+      try { registerCommands(); } catch (err) { warn("registerCommands (immediate) failed", err); }
+      try { setTimeout(function () { try { registerCommands(); } catch (e) { warn("registerCommands (delayed) failed", e); } }, 3000); } catch {}
 
       try { patchMessageActions(); } catch (err) { warn("patchMessageActions failed", err); }
       try { patchAvatars(); } catch (err) { warn("patchAvatars failed", err); }
