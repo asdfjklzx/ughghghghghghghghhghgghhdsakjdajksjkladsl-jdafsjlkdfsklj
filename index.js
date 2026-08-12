@@ -2564,9 +2564,14 @@
       } catch (err) { warn("diagnostics failed", err); }
 
       // Register commands AFTER load so Discord's command picker re-scans and shows them.
-      // Registering synchronously during onLoad registers them but the picker doesn't refresh.
+      // The picker builds its list at load; commands added during onLoad don't appear until
+      // it refreshes. Re-register a few times over the first seconds to reliably catch it.
       try { registerCommands(); } catch (err) { warn("registerCommands (immediate) failed", err); }
-      try { setTimeout(function () { try { registerCommands(); } catch (e) { warn("registerCommands (delayed) failed", e); } }, 3000); } catch {}
+      try {
+        [1000, 2500, 5000, 8000].forEach(function (ms) {
+          setTimeout(function () { try { registerCommands(); } catch (e) { warn("registerCommands (retry " + ms + ") failed", e); } }, ms);
+        });
+      } catch {}
 
       try { patchMessageActions(); } catch (err) { warn("patchMessageActions failed", err); }
       try { patchAvatars(); } catch (err) { warn("patchAvatars failed", err); }
