@@ -2221,7 +2221,7 @@
               { key: "pager" },
               n.React.createElement(
                 _View,
-                { style: { flexDirection: "row", paddingHorizontal: 6, marginBottom: 4 } },
+                { style: { flexDirection: "row", paddingHorizontal: 6, marginBottom: 10, marginTop: 4 } },
                 ["Message", "Time", "Convo", "Saved"].map(function (lbl, i) {
                   return n.React.createElement(
                     _Touch,
@@ -2242,7 +2242,7 @@
                   { style: { width: _width } },
                   n.React.createElement(
                     _SV,
-                    { style: { maxHeight: 520 }, contentContainerStyle: { paddingBottom: 160 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
+                    { style: { maxHeight: 560 }, contentContainerStyle: { paddingTop: 8, paddingHorizontal: 14, paddingBottom: 180 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
         n.React.createElement(
           N,
           { title: "Fake Message" },
@@ -2481,7 +2481,7 @@
                   { style: { width: _width } },
                   n.React.createElement(
                     _SV,
-                    { style: { maxHeight: 520 }, contentContainerStyle: { paddingBottom: 160 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
+                    { style: { maxHeight: 560 }, contentContainerStyle: { paddingTop: 8, paddingHorizontal: 14, paddingBottom: 180 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
         n.React.createElement(
           N,
           { title: "Custom Timestamp" },
@@ -2634,7 +2634,7 @@
                   { style: { width: _width } },
                   n.React.createElement(
                     _SV,
-                    { style: { maxHeight: 520 }, contentContainerStyle: { paddingBottom: 160 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
+                    { style: { maxHeight: 560 }, contentContainerStyle: { paddingTop: 8, paddingHorizontal: 14, paddingBottom: 180 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
         n.React.createElement(
           N,
           { title: "Conversation Builder" },
@@ -2724,7 +2724,7 @@
                   { style: { width: _width } },
                   n.React.createElement(
                     _SV,
-                    { style: { maxHeight: 520 }, contentContainerStyle: { paddingBottom: 160 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
+                    { style: { maxHeight: 560 }, contentContainerStyle: { paddingTop: 8, paddingHorizontal: 14, paddingBottom: 180 }, keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true },
         n.React.createElement(
           N,
           { title: "Saved Messages" },
